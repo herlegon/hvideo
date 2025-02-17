@@ -1,0 +1,38 @@
+{
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/cache": true,
+        "**/frames": true,
+        "**/*.mkv": true,
+        "**/*.mp4": true,
+        "**/*.mxf": true,
+        "**/*.png": true,
+        "**/*.jpg": true,
+        "**/*.vob": true,
+        "**/*.mpg": true,
+        "**/*.ui": false,
+        "**/*.ffindex": true,
+        "**/external": true,
+        "**/*.exe": true,
+    },
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": false,
+    "files.trimTrailingWhitespace": true,
+
+    "[python]": {
+        "editor.rulers": [
+            90,
+            120
+        ],
+        // "editor.showUnused": false,
+    },
+
+    // "python.analysis.packageIndexDepths": [
+    //     {
+    //         "name": "...",
+    //         "depth": 0
+    //     },
+    // ],
+
+    "python.REPL.enableREPLSmartSend": false
+}
