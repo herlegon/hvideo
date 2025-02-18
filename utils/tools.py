@@ -1,5 +1,7 @@
 import os
 import sys
+
+from utils.p_print import red
 from .path_utils import absolute_path
 from stat import S_IEXEC
 
@@ -43,3 +45,6 @@ elif sys.platform == "linux":
 else:
     sys.exit("[E] Platform/system not supported.")
 
+for exe in (ffmpeg_exe, ffprobe_exe):
+    if not os.path.isfile(exe):
+        raise ValueError(red(f"[E] missing executable: {exe}"))

@@ -8,49 +8,20 @@ import numpy as np
 import subprocess
 from typing import Any, Literal, TypedDict
 
-from ..utils.logger import logger
-from ..utils.path_utils import absolute_path
-from ..utils.p_print import *
-from ..utils.pxl_fmt import PIXEL_FORMAT
-from ..utils.time_conversions import (
+from utils.logger import logger
+from utils.path_utils import absolute_path
+from utils.p_print import *
+from utils.time_conversions import (
     FrameRate,
     frame_rate_to_str,
 )
-from ..utils.tools import ffprobe_exe
+from utils.tools import ffprobe_exe
+from .pxl_fmt import PIXEL_FORMAT
 
 
 ChannelOrder = Literal['rgb', 'bgr']
 FShape = tuple[int, int, int]
 
-
-class VideoCodec(Enum):
-    H264 = "libx264"
-    H265 = "libx265"
-    VP9 = "libvpx-vp9"
-    FFV1 = "ffv1"
-    DNXHD = "dnxhd"
-    HEVC_NVENC = "hevc_nvenc"
-
-
-str_to_video_codec: dict[str, VideoCodec] = {
-    'h264': VideoCodec.H264,
-    'h265': VideoCodec.H265,
-    'ffv1': VideoCodec.FFV1,
-    'vp9': VideoCodec.VP9,
-    'dnxhd': VideoCodec.DNXHD,
-    "hevc_nvenc": VideoCodec.HEVC_NVENC,
-}
-
-
-# Limit the containers
-vcodec_to_extension: dict[VideoCodec, str] = {
-    VideoCodec.H264: '.mkv',
-    VideoCodec.H265: '.mkv',
-    VideoCodec.FFV1: '.mkv',
-    VideoCodec.VP9: '.mkv',
-    VideoCodec.DNXHD: '.mxf',
-    VideoCodec.HEVC_NVENC: '.mkv',
-}
 
 
 class FieldOrder(Enum):
@@ -303,8 +274,9 @@ def open_media_file(
     try:
         in_media_info = extract_media_info(in_media_path)
     except:
+        in_media_info = extract_media_info(in_media_path)
         sys.exit(f"[E] {in_media_path} is not a valid input media file")
-    if verbose:
+    if debug:
         print(lightcyan("FFmpeg media info:"))
         pprint(get_media_info(in_media_path))
         print(lightcyan("Input media info:"))
@@ -315,7 +287,7 @@ def open_media_file(
     # Update video info
     in_media_info['video']['filepath'] = in_media_path
 
-    if debug:
+    if debug or verbose:
         in_video_info: VideoInfo = in_media_info['video']
         frame_count_str: str = f"    {in_video_info['frame_count']} frames"
         h, w = in_video_info['shape'][:2]

@@ -1,23 +1,39 @@
 from __future__ import annotations
 
+from argparse import Namespace
 from dataclasses import dataclass
+import math
 from pprint import pprint
 import re
 import sys
 
-from .media import (
-    ChannelOrder,
-    FShape,
-    MediaInfo,
-    str_to_video_codec,
-    VideoCodec,
-    VideoInfo,
+import numpy as np
+
+from utils.p_print import red
+from utils.path_utils import get_extension
+from utils.tools import ffmpeg_exe
+from .codecs import (
     vcodec_to_extension,
+    VideoCodec,
+    str_to_video_codec,
 )
-from ..utils.p_print import red
-from ..utils.path_utils import get_extension
-from ..utils.pxl_fmt import PIXEL_FORMAT
-from ..utils.tools import ffmpeg_exe
+from .media import (
+    MediaInfo,
+    VideoInfo,
+)
+from .utils import VideoPipeInfo
+from .pxl_fmt import PIXEL_FORMAT
+
+
+
+def clean_ffmpeg_params(data: str) -> str:
+    for c in ['\"', '\r', '\n', '\t']:
+        data = data.replace(c, '')
+    # avoid too many spaces when debugging
+    for _ in range(4):
+        data = data.replace('  ', ' ')
+    return data
+
 
 
 @dataclass
@@ -57,7 +73,7 @@ class ColorSettings:
 class EncoderSettings:
     filepath: str
     # Complex filters
-    keep_sar: bool = True
+    keep_sar: bool = False
     size: tuple[int, int] | None = None
     resize_algo: str = ''
     add_borders: bool = False
@@ -70,7 +86,7 @@ class EncoderSettings:
     overwrite: bool = True
     codec_settings: CodecSettings | None = None
     color_settings: ColorSettings | None = None
-    ffmpeg_args: str = ''
+    custom_params: str = ''
     # Audio
     copy_audio: bool = False
     # Debug
@@ -80,8 +96,8 @@ class EncoderSettings:
 
 
 def args_to_encoder_settings(
-    args,
-    video_info: VideoInfo,
+    args: Namespace,
+    vi: VideoInfo,
 ) -> EncoderSettings:
     """Parse the command line to set the encoder parameters
         inplace modifications of the video info
@@ -89,9 +105,9 @@ def args_to_encoder_settings(
     # Copy from input
     params: EncoderSettings = EncoderSettings(
         filepath='',
-        vcodec=str_to_video_codec[video_info['codec']],
+        vcodec=str_to_video_codec[vi['codec']],
         keep_sar=True,
-        pix_fmt=video_info['pix_fmt'],
+        pix_fmt=vi['pix_fmt'],
     )
 
     # Encoder: codec, settings
@@ -111,7 +127,7 @@ def args_to_encoder_settings(
 
     elif vcodec == VideoCodec.DNXHD:
         params.codec_settings = DNxHRSettings(
-            profile=video_info['profile']
+            profile=vi['profile']
         )
         params.preset = params.tune = params.crf = None
 
@@ -130,21 +146,20 @@ def args_to_encoder_settings(
 
     # Colorspace
     params.color_settings = ColorSettings(
-        colorspace=video_info.get('color_space', None),
-        color_primaries=video_info.get('color_primaries', None),
-        color_trc=video_info.get('color_transfer', None),
-        color_range=video_info.get('color_range', None),
+        colorspace=vi.get('color_space', None),
+        color_primaries=vi.get('color_primaries', None),
+        color_trc=vi.get('color_transfer', None),
+        color_range=vi.get('color_range', None),
     )
 
     # Set the output extension depending on the codec
-    out_fp: str = video_info['filepath']
+    out_fp: str = vi['filepath']
     if get_extension(out_fp) == '.$$$':
         out_fp = out_fp.replace('.$$$', vcodec_to_extension[vcodec])
     params.filepath = out_fp
 
     # Modify the encoder settings used by the encoder node
-    params.ffmpeg_args = args.ffmpeg_args
-    params.benchmark = args.benchmark
+    params.custom_params = clean_ffmpeg_params(args.ffmpeg)
 
     # Copy audio stream if no video clipping
     if (
@@ -158,9 +173,34 @@ def args_to_encoder_settings(
 
 
 
+def video_encoder_pipe_info(
+    out_vi: VideoInfo,
+    e_settings: EncoderSettings,
+    debug: bool = False
+) -> VideoPipeInfo:
+    # Force pipe to rgb format
+    c_order: str = 'rgb'
+    # dtype is choosen depending on the encoding pixel format
+    bpp = PIXEL_FORMAT[e_settings.pix_fmt]['bpp']
+    pipe_pix_fmt: str = f"{c_order}{48 if bpp > 8 else 24}"
+    dtype: np.dtype = np.uint16 if bpp > 8 else np.uint8
+    nbytes: int = math.prod(out_vi['shape']) * np.dtype(dtype).itemsize
+
+    vpi: VideoPipeInfo = VideoPipeInfo(
+        filepath=out_vi['filepath'],
+        dtype=dtype,
+        c_order=c_order,
+        shape=out_vi['shape'],
+        nbytes=nbytes,
+        nframes=out_vi['frame_count'],
+        pix_fmt=pipe_pix_fmt,
+    )
+    return vpi
+
+
 def generate_ffmpeg_encoder_cmd(
     video_info: VideoInfo,
-    params: EncoderSettings,
+    e_settings: EncoderSettings,
     in_media_info: MediaInfo
 ) -> list[str]:
     """Generate a FFmpeg command line from parameters and info
@@ -191,10 +231,10 @@ def generate_ffmpeg_encoder_cmd(
         '-i', 'pipe:0'
     ]
 
-    if params.copy_audio and in_media_info['audio']['nstreams'] > 0:
+    if e_settings.copy_audio and in_media_info['audio']['nstreams'] > 0:
         ffmpeg_command.extend(['-i', in_vi['filepath']])
 
-    if params.benchmark:
+    if e_settings.benchmark:
         ffmpeg_command.extend(["-benchmark", "-f", "null", "-"])
         return ffmpeg_command
 
@@ -217,40 +257,40 @@ def generate_ffmpeg_encoder_cmd(
 
     # Encoder
     if (
-        "-vcodec" not in params.ffmpeg_args
-        and "-c:v" not in params.ffmpeg_args
+        "-vcodec" not in e_settings.custom_params
+        and "-c:v" not in e_settings.custom_params
     ):
-        ffmpeg_command.extend(["-vcodec", f"{params.vcodec.value}"])
+        ffmpeg_command.extend(["-vcodec", f"{e_settings.vcodec.value}"])
 
-    if "-pix_fmt" not in params.ffmpeg_args:
-        ffmpeg_command.extend(["-pix_fmt", f"{params.pix_fmt}"])
+    if "-pix_fmt" not in e_settings.custom_params:
+        ffmpeg_command.extend(["-pix_fmt", f"{e_settings.pix_fmt}"])
 
     # Settings
-    if "-preset" not in params.ffmpeg_args and params.preset:
-        ffmpeg_command.extend(["-preset", f"{params.preset}"])
+    if "-preset" not in e_settings.custom_params and e_settings.preset:
+        ffmpeg_command.extend(["-preset", f"{e_settings.preset}"])
 
-    if "-tune" not in params.ffmpeg_args and params.tune:
-        ffmpeg_command.extend(["-tune", f"{params.tune}"])
+    if "-tune" not in e_settings.custom_params and e_settings.tune:
+        ffmpeg_command.extend(["-tune", f"{e_settings.tune}"])
 
     if (
-        "-crf" not in params.ffmpeg_args
-        and params.crf is not None
-        and params.crf > 0
+        "-crf" not in e_settings.custom_params
+        and e_settings.crf is not None
+        and e_settings.crf > 0
     ):
-        ffmpeg_command.extend(["-crf", f"{params.crf}"])
+        ffmpeg_command.extend(["-crf", f"{e_settings.crf}"])
 
-    if params.codec_settings is not None:
-        for k, v in params.codec_settings.__dict__.items():
+    if e_settings.codec_settings is not None:
+        for k, v in e_settings.codec_settings.__dict__.items():
             ffmpeg_command.extend([f"-{k}", v])
 
     # Color space
-    color_settings: ColorSettings = params.color_settings
+    color_settings: ColorSettings = e_settings.color_settings
     _tmp_array: list[str] = []
     for k, v in color_settings.__dict__.items():
         if k == 'color_range':
             continue
         if (
-            k not in params.ffmpeg_args
+            k not in e_settings.custom_params
             and v is not None
         ):
             _tmp_array.append(f"{k}={v}")
@@ -261,7 +301,7 @@ def generate_ffmpeg_encoder_cmd(
 
     k, v = 'color_range', color_settings.color_range
     if (
-        k not in params.ffmpeg_args
+        k not in e_settings.custom_params
         and v is not None
         and v.lower() not in ("unknown", "unspecified")
     ):
@@ -270,7 +310,7 @@ def generate_ffmpeg_encoder_cmd(
         ffmpeg_command.extend([f"-{k}", "limited" if v.lower() in limited else "full"])
 
     # Audio/subtitles
-    if params.copy_audio and True:
+    if e_settings.copy_audio and True:
         if in_media_info['audio']['nstreams'] > 0:
             ffmpeg_command.extend([
                 "-map", "1:a", "-acodec", "copy"
@@ -281,14 +321,11 @@ def generate_ffmpeg_encoder_cmd(
             ])
 
     # Custom params
-    codec_params: str = params.ffmpeg_args
-    if not codec_params and params.vcodec == VideoCodec.H265:
-        # Add default if no custom params for H265
-        codec_params = "-profile:v main422-10 -x265-params sao=0"
+    codec_params: str = e_settings.custom_params
     ffmpeg_command.extend(codec_params.split(" "))
 
     # Add metadata
-    if get_extension(params.filepath) == ".mkv":
+    if get_extension(e_settings.filepath) == ".mkv":
         ffmpeg_command.extend(["-movflags", "use_metadata_tags"])
         metadata: dict[str, str]
         for metadata in (video_info['metadata'], in_vi['metadata']):
@@ -297,8 +334,8 @@ def generate_ffmpeg_encoder_cmd(
                     ffmpeg_command.extend(["-metadata:s:v:0", f"{k}={meta}"])
 
     # Output filepath
-    ffmpeg_command.append(params.filepath)
-    if params.overwrite:
+    ffmpeg_command.append(e_settings.filepath)
+    if e_settings.overwrite:
         ffmpeg_command.append('-y')
 
 

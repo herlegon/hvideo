@@ -3,20 +3,34 @@ import math
 import time
 import cupy as cp
 import numpy as np
-from .cp_utils import HostDeviceMemory
-from .cp_tensor import (
+import torch
+from torch import (
+    Tensor,
+    from_dlpack,
+    to_dlpack,
+)
+
+from .torch_tensor import (
     flip_r_b_channels,
-    MemcpyKind,
     to_hwc,
     to_nchw,
+    np_dtype_to_torch,
 )
+from .cp_utils import (
+    HostDeviceMemory,
+    MemcpyKind,
+)
+
 
 
 def htod_transfer(
     htod_mem: HostDeviceMemory,
     img_buffer: np.ndarray,
     img_shape: tuple[int, int, int],
-) -> cp.ndarray:
+) -> Tensor:
+    """Asynchronous copy from Host to Device
+    """
+
     h_mem: np.ndarray = np.frombuffer(
         htod_mem.host,
         dtype=img_buffer.dtype,
@@ -31,24 +45,28 @@ def htod_transfer(
     d_cp_tensor.set(h_mem)
     d_cp_tensor.astype(img_buffer.dtype)
     d_cp_tensor = d_cp_tensor.reshape(img_shape)
-    return d_cp_tensor
+    d_torch_tensor: Tensor = from_dlpack(d_cp_tensor.toDlpack())
+    return d_torch_tensor
 
 
 
 def dtoh_transfer(
     dtoh_mem: HostDeviceMemory,
-    d_img: cp.ndarray,
+    d_img: Tensor,
     out_dtype: np.dtype,
     cuda_stream,
 ) -> np.ndarray:
-    out_shape: tuple[int, int, int] = d_img.shape
+    """Asynchronous copy from Device to Host
+    """
 
-    d_img = cp.ravel(d_img)
+    out_shape: tuple[int, int, int] = d_img.shape
+    d_cp_img = cp.from_dlpack(to_dlpack(d_img))
+    d_cp_img = cp.ravel(d_cp_img)
 
     cp.cuda.runtime.memcpyAsync(
         int(dtoh_mem.host),
-        d_img.data.ptr,
-        d_img.nbytes,
+        d_cp_img.data.ptr,
+        d_cp_img.nbytes,
         MemcpyKind.DeviceToHost,
         cuda_stream.ptr
     )
@@ -66,65 +84,65 @@ def dtoh_transfer(
 
 
 def img_to_tensor(
-    d_img: cp.ndarray,
-    tensor_dtype: cp.dtype,
+    d_img: Tensor,
+    dtype: torch.dtype,
     flip_r_b: bool = False,
-) -> cp.ndarray:
-    """ Create a tensor, reshaped and normalized
+) -> Tensor:
+    """ Create a 4D tensor from a 3D image (tensor type), reshaped and normalized
     """
-    d_cp_tensor: cp.ndarray = d_img
-    img_dtype: cp.dtype = d_img.dtype
+    d_tensor: Tensor = d_img
+    img_dtype: torch.dtype = d_img.dtype
     if flip_r_b:
-        d_cp_tensor = flip_r_b_channels(d_cp_tensor)
-    d_cp_tensor = to_nchw(d_cp_tensor)
+        d_tensor = flip_r_b_channels(d_tensor)
+    d_tensor = to_nchw(d_tensor)
 
     divisor: float = (
-        float(np.iinfo(img_dtype).max)
-        if tensor_dtype != img_dtype
+        float(torch.iinfo(img_dtype).max)
+        if dtype != img_dtype
         else 1.
     )
 
     if divisor != 1.:
-        d_cp_tensor = d_cp_tensor.astype(cp.float32)
-        d_cp_tensor /= divisor
-    d_cp_tensor = d_cp_tensor.astype(tensor_dtype)
+        d_tensor = d_tensor.to(dtype=torch.float32) / divisor
 
-    return cp.ascontiguousarray(d_cp_tensor)
+    d_tensor = d_tensor.to(dtype=dtype)
+    return d_tensor.contiguous()
 
 
 
 def tensor_to_img(
-    tensor: cp.ndarray,
-    out_dtype: cp.dtype | np.dtype,
+    tensor: Tensor,
+    dtype: np.dtype,
     flip_r_b: bool = False,
-) -> cp.ndarray:
+) -> Tensor:
 
-    cp_ndarray: cp.ndarray = to_hwc(tensor)
+    torch_ndarray: Tensor = to_hwc(tensor)
     if flip_r_b:
-        cp_ndarray = flip_r_b_channels(cp_ndarray)
+        torch_ndarray = flip_r_b_channels(torch_ndarray)
 
-    cp_ndarray = cp.clip(cp_ndarray, 0, 1.0, cp_ndarray)
+    torch_ndarray = torch.clamp(torch_ndarray, 0, 1.0)
 
     multiplier: float = 1.
-    tensor_dtype: cp.dtype = tensor.dtype
-    if tensor_dtype != out_dtype:
+    tensor_dtype: torch.dtype = tensor.dtype
+    if tensor_dtype != dtype:
         num = (
-            float(np.iinfo(out_dtype).max)
-            if tensor_dtype in (np.float32, np.float16)
+            float(np.iinfo(dtype).max)
+            if tensor_dtype in (torch.float32, torch.float16, torch.bfloat16)
             else 1.
         )
         denum = (
             float(np.iinfo(tensor_dtype).max)
-            if out_dtype == np.float32
+            if dtype == np.float32
             else 1.
         )
         multiplier: float = num / denum
 
     if multiplier != 1.:
-        cp_ndarray = cp_ndarray.astype(cp.float32, copy=False)
-        cp_ndarray = cp_ndarray * multiplier
-    cp_ndarray = cp_ndarray.astype(out_dtype, copy=False)
+        torch_ndarray = torch_ndarray.to(dtype=torch.float32, copy=False)
+        torch_ndarray = torch_ndarray * multiplier
 
-    return cp_ndarray
+    torch_ndarray = torch_ndarray.to(dtype=np_dtype_to_torch[dtype])
+
+    return torch_ndarray
 
 

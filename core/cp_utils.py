@@ -12,6 +12,23 @@ from media.media import FShape
 pinned_memory_pool = cp.cuda.PinnedMemoryPool()
 cp.cuda.set_pinned_memory_allocator(pinned_memory_pool.malloc)
 
+
+class MemcpyKind:
+    """
+    Enumerates different kinds of copy operations.
+    """
+    HostToHost = 0
+    """Copies from host memory to host memory"""
+    HostToDevice = 1
+    """Copies from host memory to device memory"""
+    DeviceToHost = 2
+    """Copies from device memory to host memory"""
+    DeviceToDevice = 3
+    """Copies from device memory to device memory"""
+    Default = 4
+
+
+
 if torch.cuda.is_available():
     import cupy as cp
 

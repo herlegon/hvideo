@@ -6,6 +6,7 @@ from pprint import pprint
 import re
 import subprocess
 import sys
+from warnings import warn
 
 import numpy as np
 
@@ -14,33 +15,17 @@ from utils.time_conversions import (
     frame_to_sexagesimal,
     sexagesimal_to_frame,
 )
+from utils.p_print import *
+from utils.tools import ffmpeg_exe
 
 from .media import (
     ChannelOrder,
     FShape,
     VideoInfo,
 )
-from utils.p_print import *
-from utils.tools import ffmpeg_exe
+from .utils import DecoderSeek, VideoPipeInfo
 
 
-
-@dataclass
-class VideoStreamInfo:
-    filepath: str
-    dtype: np.dtype
-    c_order: ChannelOrder
-    shape: FShape
-    nbytes: int
-    pix_fmt: str
-    sar: tuple[int, int]
-
-    start: str = ""
-    to: str = ""
-    duration: str = ""
-    nframes: int = 0
-
-    metadata: dict[str, str] = field(default_factory=dict)
 
 
 
@@ -76,18 +61,17 @@ def _decoder_frame_prop(
     )
 
 
-
-def video_stream_info(
+def get_seek(
     in_vi: VideoInfo,
     args: Namespace,
-    debug: bool = False
-) -> VideoStreamInfo:
+) -> DecoderSeek:
 
     if not in_vi['is_frame_rate_fixed']:
         sys.exit("[E] variable frame rate is not supported yet")
 
     count: int = in_vi['frame_count']
     start: int = 0
+    to: int = in_vi['frame_count']
     frame_rate: FrameRate = in_vi['frame_rate_r']
 
     # Seek
@@ -99,66 +83,89 @@ def video_stream_info(
     if seek_start:
         if result := re.search(re.compile(r"^(\d+)f$"), seek_start):
             start = int(result.group(1))
-            start_hms = frame_to_sexagesimal(start, frame_rate)
         else:
-            start = sexagesimal_to_frame(seek_start)
-            start_hms = seek_start
+            start = sexagesimal_to_frame(seek_start, frame_rate)
+        start_hms = frame_to_sexagesimal(start, frame_rate)
+        count = to - start
+
+    if start >= in_vi['frame_count']:
+        raise ValueError(red(f"Erroneous seek start: {start} >= {in_vi['frame_count']}"))
 
     seek_duration: str = args.t
     seek_end: str = args.to
     if seek_duration != '':
         if result := re.search(re.compile(r"^(\d+)f$"), seek_duration):
             count = int(result.group(1))
-            duration_hms = frame_to_sexagesimal(count, frame_rate)
         else:
-            count = sexagesimal_to_frame(seek_duration)
-            duration_hms = seek_duration
+            count = sexagesimal_to_frame(seek_duration, frame_rate)
+        duration_hms = frame_to_sexagesimal(count, frame_rate)
 
     elif seek_end != '':
         if result := re.search(re.compile(r"^(\d+)f$"), seek_end):
             to = int(result.group(1))
-            to_hms = frame_to_sexagesimal(to, frame_rate)
         else:
-            to_hms = seek_end
-            to = sexagesimal_to_frame(seek_end)
+            to = sexagesimal_to_frame(seek_end, frame_rate)
+        to_hms = frame_to_sexagesimal(to, frame_rate)
         count = to - start
+
+    if start + count > in_vi['frame_count']:
+        warn(yellow(f"Erroneous seek, reducing <- improve this message"))
+        count = in_vi['frame_count'] - start
+        to_hms = ""
+        duration_hms = ""
+
+    return DecoderSeek(
+        start=start_hms,
+        to=to_hms,
+        duration=duration_hms,
+        f_no=start,
+        count=count,
+    )
+
+
+
+def video_decoder_pipe_info(
+    in_vi: VideoInfo,
+    seek: DecoderSeek,
+    debug: bool = False
+) -> VideoPipeInfo:
 
 
     frame_shape, dtype, _, nbytes = _decoder_frame_prop(in_vi)
-    vsi: VideoStreamInfo = VideoStreamInfo(
+    vpi: VideoPipeInfo = VideoPipeInfo(
         filepath=in_vi['filepath'],
         dtype=dtype,
         c_order='rgb',
         shape=frame_shape,
         nbytes=nbytes,
-        pix_fmt='rgb24' if in_vi["bpp"] < 8 else 'rgb48',
-        sar=in_vi['sar'],
+        pix_fmt='rgb48' if in_vi['bpp'] > 8 else 'rgb24',
 
-        start=start_hms,
-        to=to_hms,
-        duration=duration_hms,
-        nframes=count,
+        start=seek.start,
+        to=seek.to,
+        duration=seek.duration,
+        f_no=seek.f_no,
+        nframes=seek.count,
     )
 
     if debug:
-        print(lightcyan("Decoder pipe stream:"))
-        pprint(vsi)
+        print(lightcyan("Decoder pipe:"))
+        pprint(vpi)
+        print(f"  shape: {vpi.shape}")
+        print(f"  pixel format: {vpi.pix_fmt}")
+        print(f"  dtype: {vpi.dtype}")
+        print(f"  nbytes: {vpi.nbytes}")
+        print(f"  channel order: {vpi.c_order}")
+        print(f"  start: {vpi.start}")
+        print(f"  to: {vpi.to}")
+        print(f"  duration: {vpi.duration}")
+        print(f"  frames: {vpi.nframes}")
 
-        print(f"  shape: {vsi.shape}")
-        print(f"  pixel format: {vsi.pix_fmt}")
-        print(f"  dtype: {vsi.dtype}")
-        print(f"  nbytes: {vsi.nbytes}")
-        print(f"  channel order: {vsi.c_order}")
-        print(f"  sar: {vsi.sar}")
-        print(f"  start: {vsi.start}")
-        print(f"  to: {vsi.to}")
-        print(f"  duration: {vsi.duration}")
-        print(f"  frames: {vsi.nframes}")
+    return vpi
 
 
 
 def decoder_subprocess(
-    vsi: VideoStreamInfo,
+    vpi: VideoPipeInfo,
     debug: bool = False
 ) -> subprocess.Popen:
 
@@ -168,19 +175,19 @@ def decoder_subprocess(
         "-loglevel", "warning",
         "-nostats",
     ]
-    if vsi.start:
-        d_command.extend(["-ss", vsi.start])
+    if vpi.start:
+        d_command.extend(["-ss", vpi.start])
 
-    d_command.extend(["-i", vsi.filepath])
+    d_command.extend(["-i", vpi.filepath])
 
-    if vsi.to:
-        d_command.extend(["-to", vsi.to])
-    elif vsi.duration:
-        d_command.extend(["-t", vsi.duration])
+    if vpi.to:
+        d_command.extend(["-to", vpi.to])
+    elif vpi.duration:
+        d_command.extend(["-t", vpi.duration])
 
     d_command.extend([
         "-f", "image2pipe",
-        "-pix_fmt", vsi.pix_fmt,
+        "-pix_fmt", vpi.pix_fmt,
         "-vcodec", "rawvideo",
         "-"
     ])

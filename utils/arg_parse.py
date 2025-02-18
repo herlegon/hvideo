@@ -9,10 +9,14 @@ from argparse import (
 import os
 import sys
 
+from media.codecs import str_to_video_codec
 from utils.p_print import red
+from .path_utils import (
+    absolute_path,
+    is_access_granted,
+    path_split,
+)
 
-from ..media.media import str_to_video_codec
-from .path_utils import absolute_path, is_access_granted, path_split
 
 class BoundedInteger:
     def __init__(self, min_value: int, max_value: int) -> None:
@@ -62,12 +66,47 @@ def args_parse() -> Namespace:
     parser.add_argument(
         "--suffix",
         type=str,
-        default="_fixed",
+        default="_pytc",
         required=False,
         help="""Suffix used when no output filename is specified.
 """
     )
 
+    # Specific for DNxHR, SAR may be not present though it should be -> resize has to be done
+    parser.add_argument(
+        "-fsar",
+        "--fsar",
+        type=str,
+        default="",
+        help="""SAR metadata may be not present in input video.
+Use this one to resize the video and overwrite the one specified in metadata
+Keep the height, modify the width.
+It should normally never be used as it's really very specific.
+format: 4/3 (or 16/9, etc.)
+\n"""
+    )
+
+    parser.add_argument(
+        "-fsar_h",
+        "--fsar_h",
+        type=str,
+        default="",
+        help="""SAR metadata may be not present in input video.
+Use this one to resize the video and overwrite the one specified in metadata.
+Keep the width, modify the height.
+It should normally never be used as it's really very specific.
+format: 4/3 (or 16/9, etc.)
+\n"""
+    )
+
+    parser.add_argument(
+        "-scale",
+        "--scale",
+        type=float,
+        default=1.,
+        help="""Resize the video before applying any filter.
+\n"""
+    )
 
     # Seeking
     parser.add_argument(
@@ -202,12 +241,14 @@ recommended: yuv420p, yuv420p10le, yuv420p12le
     )
 
     arguments: Namespace = parser.parse_args()
-
     return arguments
 
 
 
-def check_args(args: Namespace) -> tuple[str, str]:
+def check_args(
+    args: Namespace,
+    add_suffix: str = ""
+) -> tuple[str, str]:
     """Check that input/output media files can be opened/written
 
         returns absolute path of each media files
@@ -223,7 +264,7 @@ def check_args(args: Namespace) -> tuple[str, str]:
     if not args.output:
         dirname, basename, extension = path_split(in_media_path)
         out_media_path: str = os.path.join(
-            dirname, f"{basename}{args.suffix}_{args.t_radius}_{args.strength}{extension}"
+            dirname, f"{basename}{args.suffix}{add_suffix}{extension}"
         )
     if out_media_path == in_media_path:
         sys.exit(red(f"Error: output file must be different from input file: {out_media_path}"))

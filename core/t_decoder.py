@@ -8,15 +8,17 @@ from threading import Event, Lock
 import time
 import torch
 from torch import Tensor
+
+from media.utils import VideoPipeInfo
 from .dh_transfers import (
     htod_transfer,
     img_to_tensor,
 )
 from media import FShape
 
-from media.decoder import VideoStreamInfo, decoder_subprocess
+from media.decoder import decoder_subprocess
 from .cp_utils import allocate_memory
-from .types import BaseThread
+from .types import BaseThread, NnFrame
 
 from utils.p_print import *
 
@@ -27,8 +29,7 @@ from utils.p_print import *
 class DecoderThread(BaseThread):
     def __init__(
         self,
-        vsi: VideoStreamInfo,
-        device: str = "cuda:0",
+        video_pipe_info: VideoPipeInfo,
         tensor_dtype: torch.dtype = torch.float32,
         debug: bool = False,
     ) -> None:
@@ -38,15 +39,11 @@ class DecoderThread(BaseThread):
         self._lock: Lock = Lock()
         self._lock.acquire(blocking=False)
 
-        self.vsi: VideoStreamInfo = vsi
+        self.vpi: VideoPipeInfo = video_pipe_info
         self.sub_process: subprocess.Popen = decoder_subprocess(
-            vsi=self.vsi, debug=debug
+            vpi=self.vpi, debug=debug
         )
         self.tensor_dtype: torch.dtype = tensor_dtype
-
-
-    def set_inference_threads(self, i_threads: dict[str, InferenceThread]):
-        self.i_threads = i_threads
 
 
     @property
@@ -60,19 +57,22 @@ class DecoderThread(BaseThread):
         # Create a cuda stream and allocate Host memory
         cuda_stream = cp.cuda.stream.Stream(non_blocking=True)
         htod_mem = allocate_memory(
-            shape=(self.vsi.nbytes, 1, 1),
-            dtype=self.vsi.dtype,
+            shape=(self.vpi.nbytes, 1, 1),
+            dtype=self.vpi.dtype,
             stream=cuda_stream
         )
 
-        remaining: int = self.vsi.nframes
+        remaining: int = self.vpi.nframes
 
         # Input stream
-        img_shape: FShape = self.vsi.shape
-        pipe_dtype: np.dtype = self.vsi.dtype
-        pipe_img_nbytes = self.vsi.nbytes
+        img_shape: FShape = self.vpi.shape
+        pipe_dtype: np.dtype = self.vpi.dtype
+        pipe_img_nbytes = self.vpi.nbytes
 
-        f_no: int = 0
+        flip_r_b: bool = bool(self.vpi.c_order != 'rgb')
+
+        f_no: int = self.vpi.f_no
+        f_index: int = 0
         with cuda_stream:
             while (
                 not self._stop_event.is_set()
@@ -105,14 +105,9 @@ class DecoderThread(BaseThread):
                 # cp.ndarray image to tensor
                 d_tensor: Tensor = img_to_tensor(
                     d_img=d_img,
-                    tensor_dtype=(
-                        cp.float16 if session.fp16 else cp.float32
-                    ),
+                    tensor_dtype=self.tensor_dtype,
                     flip_r_b=flip_r_b,
                 )
-
-
-                self.tensor_dtype
 
 
                 # d_tensor = cp.clip(d_tensor + 0.2, 0, 1.)
@@ -121,65 +116,33 @@ class DecoderThread(BaseThread):
                 frame: NnFrame = NnFrame(
                     f_no=f_no,
                     tensor=d_tensor,
-                    scene=scene,
-                    src_scene=src_scene,
-                    # TODO remove deepcopy
-                    sequence=deepcopy(filter_steps),
-                    step_no=start_step_no,
-                    encoder_step_no=encoder_step_no,
+                    last=bool(remaining == 0)
                 )
-
-                # set last flag to inform the temporal inference
-                # that it's the latest one and it has to continue producing frames
-                # by itself
-                if rem_src_scene == 0 and remaining == 1:
-                    # print(yellow(f"Last frame: {frame.f_no}"))
-                    frame.last = True
 
                 # Wait -> run other threads
                 time.sleep(0.00001)
                 cuda_stream.synchronize()
 
-                # Execute synchronous filters.
-                # TODO: later, use a separate thread for this
-                # Apply cuda filters until next inference or decoder
-                apply_cuda_filters_(
-                    frame,
-                    verbose=verbose,
-                    cuda_stream=cuda_stream
+                print(
+                    f"[V][D] ({lightgreen(f_index)}) ({f_no}), {remaining}. Tensor:",
+                    f"{d_tensor.shape}, {d_tensor.dtype}"
                 )
-                if verbose:
-                    print(
-                        f"[V][D] ({lightgreen(f_index)}) ({in_f_no}), {remaining}. Tensor:",
-                        f"{d_tensor.shape}, {d_tensor.dtype}"
-                    )
-                    print(f"[V][D]     Step no.:{frame.step_no}, {frame.sequence[frame.step_no]}")
 
                 # Skip following model if inpainting and dsr
                 # patch_next_step_no_(frame=frame, model_manager=model_manager)
 
                 # Send the frame to the consumer
-                if frame.step_no >= frame.encoder_step_no:
-                    consumer = e_thread
-                else:
-                    consumer = self.i_threads[
-                        model_manager.xprovider(frame.sequence[step_no])
-                    ]
-                    consumer.put_frame(frame)
+                self.consumer.put_frame(frame)
+
                 remaining -= 1
-
                 f_index += 1
+                f_no += 1
 
-                # All frames of the scene have been decoded and sent to consumer
-                if to_produce == 0:
-                    break
 
             # except:
             #     if verbose:
             #         print(lightgreen(f"[V][D] Encountered end of file or error. Decoded {f_no} frames"))
 
-            print(lightgreen(f"[V][D] End of src scene {src_scene['no']}"))
-            print(lightgreen(f"[V][D] End of scene {scene['no']}"))
         print(lightgreen(f"[V][D] End of decoding"))
 
 
