@@ -81,6 +81,7 @@ def frame_rate_dec(frame_rate: FrameRate) -> int | float:
     return float(frame_rate[0]) / frame_rate[1]
 
 
+
 def get_video_resolution(video_filepath):
     """Get video resolution, (i.e. width and height) of the 1st video stream"""
     ffprobe_command = ([

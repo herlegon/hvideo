@@ -1,28 +1,21 @@
 from __future__ import annotations
-from copy import deepcopy
-import cupy as cp
 import numpy as np
 from pprint import pprint
 import subprocess
 from threading import Event, Lock
-import time
 import torch
 from torch import Tensor
 
+from media import FShape
+from media.decoder import decoder_subprocess
 from media.utils import VideoPipeInfo
 from .dh_transfers import (
-    htod_transfer,
-    img_to_tensor,
+    htod_transfer_torch,
 )
-from media import FShape
-
-from media.decoder import decoder_subprocess
-from .cp_utils import allocate_memory
+from .torch_tensor import img_to_tensor, np_dtype_to_torch
 from .types import BaseThread, NnFrame
 
 from utils.p_print import *
-
-
 
 
 
@@ -30,9 +23,18 @@ class DecoderThread(BaseThread):
     def __init__(
         self,
         video_pipe_info: VideoPipeInfo,
+        device: str = "cuda:0",
         tensor_dtype: torch.dtype = torch.float32,
         debug: bool = False,
     ) -> None:
+        """Create a thread which purpose is to get frames from the encoder
+        transfer it into the GPU and convert to 4D tensors.
+
+        args:
+            device: GPU device
+            tensor_dtype: the tensor will be cast to this dtype.
+                        To maximize performance, use the dtype of the following filter
+        """
         super().__init__()
         self._decoded: int = 0
         self._stop_event: Event = Event()
@@ -43,6 +45,8 @@ class DecoderThread(BaseThread):
         self.sub_process: subprocess.Popen = decoder_subprocess(
             vpi=self.vpi, debug=debug
         )
+
+        self.device: str = device
         self.tensor_dtype: torch.dtype = tensor_dtype
 
 
@@ -52,35 +56,42 @@ class DecoderThread(BaseThread):
 
 
     def run(self) -> None:
-        verbose: bool = False
+        verbose: bool = self.verbose
 
         # Create a cuda stream and allocate Host memory
-        cuda_stream = cp.cuda.stream.Stream(non_blocking=True)
-        htod_mem = allocate_memory(
-            shape=(self.vpi.nbytes, 1, 1),
-            dtype=self.vpi.dtype,
-            stream=cuda_stream
+        cuda_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
+        host_mem: Tensor = torch.empty(
+            self.vpi.nbytes,
+            dtype=torch.uint8,
+            pin_memory=True
         )
-
-        remaining: int = self.vpi.nframes
 
         # Input stream
         img_shape: FShape = self.vpi.shape
-        pipe_dtype: np.dtype = self.vpi.dtype
-        pipe_img_nbytes = self.vpi.nbytes
+        img_dtype: torch.dtype = (
+            np_dtype_to_torch[self.vpi.dtype]
+            if isinstance(self.vpi.dtype, np.dtype)
+            else self.vpi.dtype
+        )
+        img_nbytes = self.vpi.nbytes
 
+        # Image to tensor
+        tensor_dtype = self.tensor_dtype
         flip_r_b: bool = bool(self.vpi.c_order != 'rgb')
 
+        # Flow control
+        remaining: int = self.vpi.nframes
         f_no: int = self.vpi.f_no
         f_index: int = 0
-        with cuda_stream:
+
+        with torch.cuda.stream(cuda_stream):
             while (
                 not self._stop_event.is_set()
                 and remaining > 0
             ):
                 img_buffer: np.ndarray = np.frombuffer(
-                    self.sub_process.stdout.read(pipe_img_nbytes),
-                    dtype=pipe_dtype,
+                    self.sub_process.stdout.read(img_nbytes),
+                    dtype=torch.uint8,
                 )
                 remaining -= 1
 
@@ -96,21 +107,20 @@ class DecoderThread(BaseThread):
                     break
 
                 # HtoD transfer
-                d_img: cp.ndarray = htod_transfer(
-                    htod_mem=htod_mem,
+                d_img: Tensor = htod_transfer_torch(
+                    host_mem=host_mem,
                     img_buffer=img_buffer,
-                    img_shape=img_shape
+                    img_dtype=img_dtype,
+                    img_shape=img_shape,
+                    cuda_stream=cuda_stream
                 )
 
-                # cp.ndarray image to tensor
+                # Image to 4D tensor
                 d_tensor: Tensor = img_to_tensor(
                     d_img=d_img,
-                    tensor_dtype=self.tensor_dtype,
+                    dtype=tensor_dtype,
                     flip_r_b=flip_r_b,
                 )
-
-
-                # d_tensor = cp.clip(d_tensor + 0.2, 0, 1.)
 
                 # Create a frame object
                 frame: NnFrame = NnFrame(
@@ -119,17 +129,10 @@ class DecoderThread(BaseThread):
                     last=bool(remaining == 0)
                 )
 
-                # Wait -> run other threads
-                time.sleep(0.00001)
-                cuda_stream.synchronize()
-
                 print(
                     f"[V][D] ({lightgreen(f_index)}) ({f_no}), {remaining}. Tensor:",
                     f"{d_tensor.shape}, {d_tensor.dtype}"
                 )
-
-                # Skip following model if inpainting and dsr
-                # patch_next_step_no_(frame=frame, model_manager=model_manager)
 
                 # Send the frame to the consumer
                 self.consumer.put_frame(frame)
@@ -138,13 +141,11 @@ class DecoderThread(BaseThread):
                 f_index += 1
                 f_no += 1
 
-
             # except:
             #     if verbose:
             #         print(lightgreen(f"[V][D] Encountered end of file or error. Decoded {f_no} frames"))
 
         print(lightgreen(f"[V][D] End of decoding"))
-
 
 
     def stop(self, force: bool=False) -> None:

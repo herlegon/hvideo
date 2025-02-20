@@ -5,11 +5,12 @@ from dataclasses import dataclass
 import math
 from pprint import pprint
 import re
+import subprocess
 import sys
 
 import numpy as np
 
-from utils.p_print import red
+from utils.p_print import lightgreen, red
 from utils.path_utils import get_extension
 from utils.tools import ffmpeg_exe
 from .codecs import (
@@ -21,7 +22,7 @@ from .media import (
     MediaInfo,
     VideoInfo,
 )
-from .utils import VideoPipeInfo
+from .utils import VideoPipeInfo, clean_fcomplex
 from .pxl_fmt import PIXEL_FORMAT
 
 
@@ -198,26 +199,29 @@ def video_encoder_pipe_info(
     return vpi
 
 
+
 def generate_ffmpeg_encoder_cmd(
+    video_pipe_info: VideoPipeInfo,
     video_info: VideoInfo,
     e_settings: EncoderSettings,
     in_media_info: MediaInfo
 ) -> list[str]:
-    """Generate a FFmpeg command line from parameters and info
-    video_info: info of the stream sent to the stdin pipe of FFmpeg
-    in_media_info: info of the original media. Used to copy characteristics
-    and audio/subtitles tracks to the output file.
+    """Generate a FFmpeg command line
+        - vpi: encoder pipe info
+        - e_settings: encoder settings
+        - video_info: encoder video info: output frame_rate and metadata
+        - in_media_info: input media, use to add args to copy audio/subtitles
     """
     in_vi: VideoInfo = in_media_info['video']
-    fps: str = ""
+    frame_rate: str = ""
 
     f_rate = video_info['frame_rate_r']
     if isinstance(f_rate, tuple | list):
-        fps = ":".join(map(str, f_rate))
+        frame_rate = ":".join(map(str, f_rate))
     else:
-        fps = str(f_rate)
+        frame_rate = str(f_rate)
 
-    h, w = video_info['shape'][:2]
+    h, w = video_pipe_info.shape[:2]
 
     ffmpeg_command = [
         ffmpeg_exe,
@@ -225,9 +229,9 @@ def generate_ffmpeg_encoder_cmd(
         "-loglevel", "error",
         "-stats",
         '-f', 'rawvideo',
-        '-pixel_format', video_info['pix_fmt'],
+        '-pixel_format', video_pipe_info.pix_fmt,
         '-video_size', f"{w}x{h}",
-        "-r", fps,
+        "-r", frame_rate,
         '-i', 'pipe:0'
     ]
 
@@ -343,3 +347,37 @@ def generate_ffmpeg_encoder_cmd(
     # ffmpeg_command = _tmp.split(" ")
 
     return ffmpeg_command
+
+
+
+def encoder_subprocess(
+    video_pipe_info: VideoPipeInfo,
+    video_info: VideoInfo,
+    e_settings: EncoderSettings,
+    in_media_info: MediaInfo,
+    debug: bool = False
+) -> subprocess.Popen:
+
+    e_command: list[str] = generate_ffmpeg_encoder_cmd(
+        video_pipe_info=video_pipe_info,
+        e_settings=e_settings,
+        video_info=video_info,
+        in_media_info=in_media_info,
+    )
+
+    if debug:
+        print(lightgreen(f"[V][D] FFmpeg command:"), ' '.join(e_command))
+
+    # Open subprocess
+    sub_process: subprocess.Popen
+    try:
+        sub_process = subprocess.Popen(
+            e_command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except Exception as e:
+        raise ValueError(f"[V][D] Unexpected error: {type(e)}", flush=True)
+
+    return sub_process
