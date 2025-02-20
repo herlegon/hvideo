@@ -1,4 +1,5 @@
 from __future__ import annotations
+import warnings
 import numpy as np
 from pprint import pprint
 import subprocess
@@ -9,13 +10,13 @@ from torch import Tensor
 from media import FShape
 from media.decoder import decoder_subprocess
 from media.utils import VideoPipeInfo
-from .dh_transfers import (
-    htod_transfer_torch,
-)
+from .dh_transfers import htod_transfer
 from .torch_tensor import img_to_tensor, np_dtype_to_torch
 from .types import BaseThread, NnFrame
 
 from utils.p_print import *
+
+warnings.filterwarnings("ignore", category=UserWarning, message=".*non-writable tensors.*")
 
 
 
@@ -25,6 +26,7 @@ class DecoderThread(BaseThread):
         video_pipe_info: VideoPipeInfo,
         device: str = "cuda:0",
         tensor_dtype: torch.dtype = torch.float32,
+        name: str | None = None,
         debug: bool = False,
     ) -> None:
         """Create a thread which purpose is to get frames from the encoder
@@ -35,7 +37,7 @@ class DecoderThread(BaseThread):
             tensor_dtype: the tensor will be cast to this dtype.
                         To maximize performance, use the dtype of the following filter
         """
-        super().__init__()
+        super().__init__(name=name)
         self._decoded: int = 0
         self._stop_event: Event = Event()
         self._lock: Lock = Lock()
@@ -58,6 +60,9 @@ class DecoderThread(BaseThread):
     def run(self) -> None:
         verbose: bool = self.verbose
 
+        if self.consumer is None:
+            raise ValueError(red("[E] No consumer defined for the decoder."))
+
         # Create a cuda stream and allocate Host memory
         cuda_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
         host_mem: Tensor = torch.empty(
@@ -68,11 +73,7 @@ class DecoderThread(BaseThread):
 
         # Input stream
         img_shape: FShape = self.vpi.shape
-        img_dtype: torch.dtype = (
-            np_dtype_to_torch[self.vpi.dtype]
-            if isinstance(self.vpi.dtype, np.dtype)
-            else self.vpi.dtype
-        )
+        img_dtype: torch.dtype = np_dtype_to_torch.get(self.vpi.dtype, self.vpi.dtype)
         img_nbytes = self.vpi.nbytes
 
         # Image to tensor
@@ -89,7 +90,7 @@ class DecoderThread(BaseThread):
                 not self._stop_event.is_set()
                 and remaining > 0
             ):
-                img_buffer: np.ndarray = np.frombuffer(
+                img_buffer: Tensor = torch.frombuffer(
                     self.sub_process.stdout.read(img_nbytes),
                     dtype=torch.uint8,
                 )
@@ -107,7 +108,7 @@ class DecoderThread(BaseThread):
                     break
 
                 # HtoD transfer
-                d_img: Tensor = htod_transfer_torch(
+                d_img: Tensor = htod_transfer(
                     host_mem=host_mem,
                     img_buffer=img_buffer,
                     img_dtype=img_dtype,

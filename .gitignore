@@ -170,3 +170,6 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 external/ffmpeg/*
+*.mkv
+*.png
+*.jpg

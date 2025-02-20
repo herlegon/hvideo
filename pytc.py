@@ -1,5 +1,3 @@
-
-
 from argparse import Namespace
 from collections.abc import Callable
 from copy import deepcopy
@@ -7,28 +5,30 @@ from pprint import pprint
 import re
 import signal
 import sys
+import torch
 from warnings import warn
 
-import torch
+from core import (
+    DecoderThread,
+    EncoderThread,
+    ProgressThread,
+    start_threads,
+)
 
-from core.cp_utils import set_cupy_cuda_device
-from core.t_decoder import DecoderThread
-from media.decoder import VideoPipeInfo, get_seek, video_decoder_pipe_info
-from media.utils import DecoderSeek
-from utils.arg_parse import args_parse, check_args
-from media.encoder import (
-    EncoderSettings,
+from media import (
     args_to_encoder_settings,
-    video_encoder_pipe_info,
-)
-from utils.logger import (
-    logger,
-    set_logger_settings,
-)
-from media.media import (
+    DecoderSeek,
+    EncoderSettings,
+    get_seek,
+    MediaInfo,
     open_media_file,
     VideoInfo,
+    VideoPipeInfo,
+    video_decoder_pipe_info,
+    video_encoder_pipe_info,
 )
+from utils.arg_parse import args_parse, check_args
+from utils.logger import logger, set_logger_settings
 from utils.p_print import *
 from utils.time_conversions import current_datetime_str
 
@@ -89,9 +89,10 @@ def main():
 
     # Open media file, create the input info
     #-------------------------------------------------------------------------
-    in_vi: VideoInfo = open_media_file(
+    in_media_info: MediaInfo = open_media_file(
         vi_fp, verbose=True, debug=arguments.debug
-    )['video']
+    )
+    in_vi: VideoInfo = in_media_info['video']
     seek: DecoderSeek = get_seek(in_vi=in_vi, args=arguments)
 
 
@@ -162,45 +163,93 @@ def main():
         }
     })
 
+    total_frames: int = out_vi['frame_count']
 
     # Decoder thread
+    #-------------------------------------------------------------------------
+    d_vpi: VideoPipeInfo = video_decoder_pipe_info(
+        in_vi, seek=seek, debug=arguments.debug
+    )
+    if debug:
+        print(lightcyan("Decoder Video pipe"))
+        pprint(d_vpi)
+
+    d_thread: DecoderThread = DecoderThread(
+        name="decoder",
+        video_pipe_info=d_vpi,
+        tensor_dtype=torch.float16
+    )
+
+
+    # Encoder thread
+    #-------------------------------------------------------------------------
+    e_vpi: VideoPipeInfo = video_encoder_pipe_info(
+        out_vi=out_vi, e_settings=e_settings, debug=arguments.debug
+    )
+    if debug:
+        print(lightcyan("Encoder Video pipe"))
+        pprint(e_vpi)
+    e_thread: EncoderThread = EncoderThread(
+        name="encoder",
+        video_info=out_vi,
+        video_pipe_info=e_vpi,
+        e_settings=e_settings,
+        in_media_info=in_media_info,
+        debug=arguments.debug
+    )
+
+    # Image Writer thread
+    #-------------------------------------------------------------------------
+    # ...
+
+
+    # Tensor inference thread
+    #-------------------------------------------------------------------------
+    i_thread = None
+    # : InferenceThread
+    # if model_manager.has_trt_models():
+    #     i_trt_thread_config: InferenceThreadConfig = InferenceThreadConfig(
+    #         execution_provider='trt',
+    #         d_thread=d_thread,
+    #         e_thread=e_thread,
+    #         model_manager=model_manager,
+    #     )
+    #     try:
+    #         i_trt_thread = InferenceThread(i_trt_thread_config)
+    #     except Exception as e:
+    #         print(red(f"[E] inference: {type(e)}"))
+    #         return True, 0, 0
+    #     i_trt_thread.setName("trt_inference")
+
+
+    # Filters
     #-------------------------------------------------------------------------
     #   create a list of functions
     functions: list[Callable] = []
     # if do_resize:
     #     functions.append(gpu_resize_)
-    d_vpi: VideoPipeInfo = video_decoder_pipe_info(
-        in_vi, seek=seek, debug=arguments.debug
-    )
+    f_thread = None
 
-    if debug:
-        print(lightcyan("Decoder Video pipe"))
-        pprint(d_vpi)
+    d_thread.set_consumer(e_thread)
+    e_thread.set_producer(d_thread)
 
 
-    d_thread: DecoderThread = DecoderThread(
-        video_pipe_info=d_vpi,
-        tensor_dtype=torch.float16
-    )
-
-    # Encoder thread
+    # Progress bar
     #-------------------------------------------------------------------------
-    e_vpi: VideoPipeInfo = video_encoder_pipe_info(
-        out_vi, e_settings=e_settings, debug=arguments.debug
-    )
-    if debug:
-        print(lightcyan("Encoder Video pipe"))
-        pprint(e_vpi)
+    progress_thread: ProgressThread = ProgressThread(total=total_frames)
+    e_thread.set_progress_thread(progress_thread)
 
 
-    # Image Writer thread
+    # Main loop
     #-------------------------------------------------------------------------
-    # Create an image writer
+    start_threads(
+        d_thread=d_thread,
+        e_thread=e_thread,
+        i_threads=[i_thread, f_thread],
+        progress_thread=progress_thread
+    )
 
-    # Create a progress bar
-
-    #
-
+    torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":

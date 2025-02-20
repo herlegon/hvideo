@@ -1,14 +1,11 @@
-# HtoD and DtoH transfers
 import time
 import numpy as np
 import torch
 from torch import Tensor
-
 from utils.p_print import red
 
 
-
-def htod_transfer_torch(
+def htod_transfer(
     host_mem: Tensor,
     img_buffer: Tensor,
     img_dtype: torch.dtype,
@@ -27,8 +24,7 @@ def htod_transfer_torch(
     return d_tensor.view(dtype=img_dtype).view(img_shape)
 
 
-
-def dtoh_transfer_torch(
+def dtoh_transfer(
     host_mem: Tensor,
     d_img: Tensor,
     cuda_stream: torch.cuda.Stream,
@@ -40,5 +36,3 @@ def dtoh_transfer_torch(
     cuda_stream.synchronize()
 
     return host_mem.view(out_shape).numpy()
-
-

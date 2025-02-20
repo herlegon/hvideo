@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import math
 import numpy as np
 from pprint import pprint
 from queue import Queue
@@ -8,46 +9,43 @@ import torch
 from torch import Tensor
 from typing import Callable
 
+from core.dh_transfers import dtoh_transfer
 from media.media import FShape, MediaInfo, VideoInfo
 from media.utils import VideoPipeInfo
 from media.encoder import EncoderSettings, encoder_subprocess
-
 from utils.p_print import *
 
 from .types import BaseThread, NnFrame
-from .dh_transfers import dtoh_transfer_torch
-from .torch_tensor import tensor_to_img
-
-
-@dataclass(slots=True)
-class EncoderThreadSettings:
-    video_pipe_info: VideoPipeInfo
-    video_info: VideoInfo
-    e_settings: EncoderSettings
-    in_media_info: MediaInfo
+from .torch_tensor import tensor_to_img, np_dtype_to_torch
 
 
 
 class EncoderThread(BaseThread):
     def __init__(
         self,
-        settings: EncoderThreadSettings,
+        video_info: VideoInfo,
+        video_pipe_info: VideoPipeInfo,
+        e_settings: EncoderSettings,
+        in_media_info: MediaInfo,
+        device: str = "cuda:0",
+        name: str | None = None,
         debug: bool = False,
     ) -> None:
-        super().__init__()
+        super().__init__(name=name)
         self._encoded: int = 0
         self._stop_event: Event = Event()
         self.in_queue: Queue = Queue(3)
 
-        self.vpi: VideoPipeInfo = settings.video_pipe_info
+        self.vpi: VideoPipeInfo = video_pipe_info
 
         self.sub_process: subprocess.Popen = encoder_subprocess(
             video_pipe_info=self.vpi,
-            video_info=settings.video_info,
-            e_settings=settings.e_settings,
-            in_media_info=settings.in_media_info,
+            video_info=video_info,
+            e_settings=e_settings,
+            in_media_info=in_media_info,
             debug=debug
         )
+        self.device: str | torch.device = device
 
 
     @property
@@ -58,18 +56,18 @@ class EncoderThread(BaseThread):
     def run(self) -> None:
         verbose: bool = self.verbose
 
-        # Create a cuda stream and allocate Host memory
-        cuda_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
-        host_mem: Tensor = torch.empty(
-            self.vpi.nbytes,
-            dtype=torch.uint8,
-            pin_memory=True
-        )
-
         # Output stream
         img_shape: FShape = self.vpi.shape
         img_dtype: np.dtype = self.vpi.dtype
         img_nbytes = self.vpi.nbytes
+
+        # Create a cuda stream and allocate Host memory
+        cuda_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
+        host_mem: Tensor = torch.empty(
+            math.prod(img_shape),
+            dtype=np_dtype_to_torch.get(self.vpi.dtype, self.vpi.dtype),
+            pin_memory=True
+        )
 
         # Tensor to image
         flip_r_b: bool = bool(self.vpi.c_order != 'rgb')
@@ -91,36 +89,37 @@ class EncoderThread(BaseThread):
                     if verbose:
                         print(purple("[V][E] Received Null tensor"))
 
-                    self.end_encoding(writer_subprocess)
-                    writer_subprocess = None
+                    self.end_encoding(self.sub_process)
                     break
 
                 frame: NnFrame = input
+                d_tensor = frame.tensor
 
                 # Get tensor from frame
                 if verbose:
                     print(
                         purple(f"[V][E] Received no. {received}:"),
-                        f"{frame.tensor.shape}, {frame.tensor.dtype}, {frame.tensor.shape}"
+                        f"{d_tensor.shape}, {d_tensor.dtype}, {d_tensor.shape}"
                     )
-
-                d_tensor = frame.tensor
+                    received += 1
 
                 d_img: np.ndarray = tensor_to_img(
                     tensor=d_tensor,
-                    dtype=stdin_dtype,
+                    dtype=img_dtype,
                     flip_r_b=flip_r_b,
                 )
 
-                out_img: np.ndarray = dtoh_transfer_torch(
-                    dtoh_mem=dtoh_mem,
+                out_img: np.ndarray = dtoh_transfer(
+                    host_mem=host_mem,
                     d_img=d_img,
-                    out_dtype=stdin_dtype,
                     cuda_stream=cuda_stream,
-                ).reshape(d_img.shape)
+                )
+                out_img = np.ascontiguousarray(out_img)
 
-                writer_subprocess.stdin.write(f.img)
-                out_i += 1
+                print(out_img.shape)
+                print(out_img.dtype)
+                print(out_img.nbytes)
+                self.sub_process.stdin.write(out_img)
                 remaining -= 1
                 sent = 1
 
@@ -128,6 +127,10 @@ class EncoderThread(BaseThread):
                 if self.progress_thread is not None:
                     self.progress_thread.put(sent)
                 self._encoded += sent
+                print(f"encoded: {self.encoded}")
+
+                if self.producer is not None:
+                    self.producer.set_produce_flag()
 
         #     print(red(f"[V][E] Error while executing: "), " ".join(encoder_command))
         self._processing = False
@@ -136,31 +139,31 @@ class EncoderThread(BaseThread):
             f"{self._encoded}",
             flush=True
         )
-        self.end_encoding(writer_subprocess)
+        self.end_encoding(self.sub_process)
         # print(purple(f"[V][E] ended"))
 
 
-    def end_encoding(self, sub_process: subprocess.Popen| None) -> bool:
+    def end_encoding(self) -> bool:
         # Close output video
-        if sub_process is not None:
-            stderr_bytes: bytes | None = None
-            stdout_bytes: bytes | None = None
-            if sub_process is not None:
-                try:
-                    # Arbitrary timeout value
-                    stdout_bytes, stderr_bytes = sub_process.communicate(input='', timeout=60)
-                except:
-                    sub_process.kill()
-                    pass
-            if stdout_bytes is not None:
-                pprint(stdout_bytes.decode('utf-8)'))
+        stderr_bytes: bytes | None = None
+        stdout_bytes: bytes | None = None
+        try:
+            # Arbitrary timeout value
+            stdout_bytes, stderr_bytes = self.sub_process.communicate(
+                input='', timeout=60
+            )
+        except:
+            self.sub_process.kill()
+            pass
+        if stdout_bytes is not None:
+            pprint(stdout_bytes.decode('utf-8)'))
 
-            if stderr_bytes is not None:
-                std_str = stderr_bytes.decode('utf-8)')
-                # TODO: parse the output file
-                for l in std_str:
-                    if not l.startswith("x265 [info]"):
-                        print(l.strip())
+        if stderr_bytes is not None:
+            std_str = stderr_bytes.decode('utf-8)')
+            # TODO: parse the output file
+            for l in std_str:
+                if not l.startswith("x265 [info]"):
+                    print(l.strip())
         return True
 
 
