@@ -116,7 +116,7 @@ def main():
         sys.exit(red("[E] fsar and fsar_h cannot be used together"))
     do_resize_with_fsar: bool = arguments.fsar or arguments.fsar_h
     if do_resize_with_fsar:
-        # resize weidth
+        # resize width
         if result := re.search(re.compile(r"^(\d+)\/(\d+)$"), arguments.fsar):
             f_vi['shape'] = (
                 h,
@@ -150,7 +150,7 @@ def main():
 
 
 
-    # Resize before inference
+    # Scale factor of the filters
     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     #   The scale of the filter MUST BE 1x. If not,
     #   the size has to be modified here
@@ -186,23 +186,6 @@ def main():
 
 
 
-    # Decoder thread
-    #-------------------------------------------------------------------------
-    d_vpi: VideoPipeInfo = video_decoder_pipe_info(
-        in_vi, seek=seek, debug=arguments.debug
-    )
-    if debug:
-        print(lightcyan("Decoder Video pipe"))
-        pprint(d_vpi)
-
-    d_thread: DecoderThread = DecoderThread(
-        name="decoder",
-        video_pipe_info=d_vpi,
-        tensor_dtype=torch.float16
-    )
-
-
-
     # Encoder thread
     #-------------------------------------------------------------------------
     e_vpi: VideoPipeInfo = video_encoder_pipe_info(
@@ -225,6 +208,7 @@ def main():
     # Tensor inference thread
     #-------------------------------------------------------------------------
     i_thread: InferenceThread | None= None
+    i_dtype = 'fp32'
     if arguments.model:
         model_filepath: str = absolute_path(arguments.model)
         i_thread = InferenceThread(name="trt_inference")
@@ -242,10 +226,7 @@ def main():
             dtype=i_dtype,
             prescale=f_vi['shape'] if do_resize else None
         )
-        d_thread.set_consumer(i_thread)
         e_thread.set_producer(i_thread)
-
-        i_thread.set_producer(d_thread)
         i_thread.set_consumer(e_thread)
 
 
@@ -265,10 +246,37 @@ def main():
 
 
 
+    # Decoder thread
+    #-------------------------------------------------------------------------
+    d_vpi: VideoPipeInfo = video_decoder_pipe_info(
+        in_vi, seek=seek, debug=arguments.debug
+    )
+    if debug:
+        print(lightcyan("Decoder Video pipe"))
+        pprint(d_vpi)
+
+    # Use the dtype of the inference task to avoid a useless conversion
+    d_thread: DecoderThread = DecoderThread(
+        name="decoder",
+        video_pipe_info=d_vpi,
+        tensor_dtype=i_dtype
+    )
+
+    if i_thread is not None:
+        d_thread.set_consumer(i_thread)
+        i_thread.set_producer(d_thread)
+
+    elif f_thread is not None:
+        d_thread.set_consumer(f_thread)
+        f_thread.set_producer(d_thread)
+
+
+
     # Progress bar
     #-------------------------------------------------------------------------
     progress_thread: ProgressThread = ProgressThread(total=total_frames)
     e_thread.set_progress_thread(progress_thread)
+
 
 
     # Main loop
