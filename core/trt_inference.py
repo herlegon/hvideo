@@ -10,7 +10,6 @@ from .types import NnFrame
 from pynnlib import (
     Idtype,
     nnlib,
-    NnModel,
     TrtModel,
 )
 from utils.p_print import *
@@ -38,6 +37,7 @@ def initialize_trt_inference(
     )
 
 
+@torch.inference_mode()
 def perform_trt_inference(self: InferenceThread, verbose: bool = False):
     print(cyan(f"[V][I][TRT] TensorRT InferenceThread"))
     in_queue: Queue = self.in_queue

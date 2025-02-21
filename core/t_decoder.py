@@ -60,6 +60,7 @@ class DecoderThread(BaseThread):
         return self._decoded
 
 
+    @torch.inference_mode()
     def run(self) -> None:
         verbose: bool = self.verbose
 

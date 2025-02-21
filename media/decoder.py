@@ -1,14 +1,12 @@
 
 from argparse import Namespace
-from dataclasses import dataclass, field
 import math
+import numpy as np
 from pprint import pprint
 import re
 import subprocess
 import sys
 from warnings import warn
-
-import numpy as np
 
 from utils.time_conversions import (
     FrameRate,
@@ -24,8 +22,6 @@ from .media import (
     VideoInfo,
 )
 from .utils import DecoderSeek, VideoPipeInfo
-
-
 
 
 
@@ -129,7 +125,6 @@ def video_decoder_pipe_info(
     seek: DecoderSeek,
     debug: bool = False
 ) -> VideoPipeInfo:
-
 
     frame_shape, dtype, _, nbytes = _decoder_frame_prop(in_vi)
     vpi: VideoPipeInfo = VideoPipeInfo(

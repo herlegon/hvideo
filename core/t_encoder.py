@@ -54,6 +54,7 @@ class EncoderThread(BaseThread):
         return self._encoded
 
 
+    @torch.inference_mode()
     def run(self) -> None:
         verbose: bool = self.verbose
 
@@ -104,7 +105,7 @@ class EncoderThread(BaseThread):
                     )
                     received += 1
 
-                d_img: np.ndarray = tensor_to_img(
+                d_img: Tensor = tensor_to_img(
                     tensor=d_tensor,
                     dtype=img_dtype,
                     flip_r_b=flip_r_b,
@@ -117,9 +118,6 @@ class EncoderThread(BaseThread):
                 )
                 out_img = np.ascontiguousarray(out_img)
 
-                print(out_img.shape)
-                print(out_img.dtype)
-                print(out_img.nbytes)
                 self.sub_process.stdin.write(out_img)
                 remaining -= 1
                 sent = 1
@@ -136,12 +134,11 @@ class EncoderThread(BaseThread):
         #     print(red(f"[V][E] Error while executing: "), " ".join(encoder_command))
         self._processing = False
         print(
-            purple(f"[V][E] Encoded all frames"),
+            purple(f"[V][E] All frames encoded"),
             f"{self._encoded}",
             flush=True
         )
         self.end_encoding(self.sub_process)
-        # print(purple(f"[V][E] ended"))
 
 
     def end_encoding(self) -> bool:
@@ -161,7 +158,7 @@ class EncoderThread(BaseThread):
 
         if stderr_bytes is not None:
             std_str = stderr_bytes.decode('utf-8)')
-            # TODO: parse the output file
+            # TODO: parse the output file ?
             for l in std_str:
                 if not l.startswith("x265 [info]"):
                     print(l.strip())
@@ -186,8 +183,5 @@ class EncoderThread(BaseThread):
     @property
     def encoded(self) -> int:
         return self._encoded
-
-    def set_progress_callback(self, function: Callable) -> None:
-        self.callback = function
 
 

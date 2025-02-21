@@ -22,7 +22,7 @@ from .media import (
     MediaInfo,
     VideoInfo,
 )
-from .utils import VideoPipeInfo, clean_fcomplex
+from .utils import VideoPipeInfo
 from .pxl_fmt import PIXEL_FORMAT
 
 
