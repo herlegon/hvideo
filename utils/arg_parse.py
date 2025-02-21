@@ -64,6 +64,7 @@ def args_parse() -> Namespace:
     )
 
     parser.add_argument(
+        "-suffix",
         "--suffix",
         type=str,
         default="_pytc",
@@ -100,8 +101,8 @@ format: 4/3 (or 16/9, etc.)
     )
 
     parser.add_argument(
-        "-scale",
-        "--scale",
+        "-resize",
+        "--resize",
         type=float,
         default=1.,
         help="""Resize the video before applying any filter.
@@ -142,6 +143,40 @@ Refer to https://ffmpeg.org//ffmpeg.html#Main-options
 HOURS:MM:SS.MILLISECONDS
 --to and --t are mutually exclusive and --t has priority.
 Refer to https://ffmpeg.org//ffmpeg.html#Main-options"
+\n"""
+    )
+
+    # TensorRT infernece
+    parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        default="",
+        help="""Trt engine filepath
+\n"""
+    )
+    parser.add_argument(
+        "-fp32",
+        "--fp32",
+        action="store_true",
+        required=False,
+        help="""Inference with fp32 datatype
+\n"""
+    )
+    parser.add_argument(
+        "-fp16",
+        "--fp16",
+        action="store_true",
+        required=False,
+        help="""Inference with fp16 datatype
+\n"""
+    )
+    parser.add_argument(
+        "-bf16",
+        "--bf16",
+        action="store_true",
+        required=False,
+        help="""Inference with bf16 datatype
 \n"""
     )
 

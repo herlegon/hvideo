@@ -7,7 +7,7 @@ from .t_progress import ProgressThread
 from .types import BaseThread
 
 
-def start_threads(
+def run_threads(
     d_thread: DecoderThread,
     i_threads: list[BaseThread] | BaseThread,
     e_thread: EncoderThread,

@@ -1,6 +1,7 @@
 from argparse import Namespace
 from collections.abc import Callable
 from copy import deepcopy
+import os
 from pprint import pprint
 import re
 import signal
@@ -12,9 +13,10 @@ from core import (
     DecoderThread,
     EncoderThread,
     ProgressThread,
-    start_threads,
+    run_threads,
 )
 
+from core.t_inference import InferenceThread
 from media import (
     args_to_encoder_settings,
     DecoderSeek,
@@ -27,9 +29,13 @@ from media import (
     video_decoder_pipe_info,
     video_encoder_pipe_info,
 )
+from pynnlib import (
+    Idtype,
+)
 from utils.arg_parse import args_parse, check_args
 from utils.logger import logger, set_logger_settings
 from utils.p_print import *
+from utils.path_utils import absolute_path
 from utils.time_conversions import current_datetime_str
 
 
@@ -87,6 +93,7 @@ def main():
     logger.debug(f"input: {vi_fp}")
 
 
+
     # Open media file, create the input info
     #-------------------------------------------------------------------------
     in_media_info: MediaInfo = open_media_file(
@@ -94,6 +101,7 @@ def main():
     )
     in_vi: VideoInfo = in_media_info['video']
     seek: DecoderSeek = get_seek(in_vi=in_vi, args=arguments)
+
 
 
     # Video info of the filter
@@ -132,7 +140,18 @@ def main():
         warn(yellow(f"[W] TODO: validate resize: {in_vi['shape']} -> {f_vi['shape']}"))
 
 
-    #   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    # Resize before inference
+    #-------------------------------------------------------------------------
+    if arguments.resize != 1:
+        do_resize = True
+        resize_factor = arguments.resize
+        f_vi['shape'] = (int(resize_factor * h), int(resize_factor * w), c)
+
+
+
+    # Resize before inference
+    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     #   The scale of the filter MUST BE 1x. If not,
     #   the size has to be modified here
     f_scale: float = 1.
@@ -165,6 +184,8 @@ def main():
 
     total_frames: int = out_vi['frame_count']
 
+
+
     # Decoder thread
     #-------------------------------------------------------------------------
     d_vpi: VideoPipeInfo = video_decoder_pipe_info(
@@ -179,6 +200,7 @@ def main():
         video_pipe_info=d_vpi,
         tensor_dtype=torch.float16
     )
+
 
 
     # Encoder thread
@@ -198,40 +220,55 @@ def main():
         debug=arguments.debug
     )
 
+
+
     # Image Writer thread
     #-------------------------------------------------------------------------
     # ...
 
 
+
     # Tensor inference thread
     #-------------------------------------------------------------------------
-    i_thread = None
-    # : InferenceThread
-    # if model_manager.has_trt_models():
-    #     i_trt_thread_config: InferenceThreadConfig = InferenceThreadConfig(
-    #         execution_provider='trt',
-    #         d_thread=d_thread,
-    #         e_thread=e_thread,
-    #         model_manager=model_manager,
-    #     )
-    #     try:
-    #         i_trt_thread = InferenceThread(i_trt_thread_config)
-    #     except Exception as e:
-    #         print(red(f"[E] inference: {type(e)}"))
-    #         return True, 0, 0
-    #     i_trt_thread.setName("trt_inference")
+    i_thread: InferenceThread | None= None
+    if arguments.model:
+        model_filepath: str = absolute_path(arguments.model)
+        i_thread = InferenceThread(name="trt_inference")
+        i_dtype: Idtype = 'fp16'
+        if arguments.fp32:
+            i_dtype = 'fp32'
+        elif arguments.fp16:
+            i_dtype = 'fp16'
+        elif arguments.bf16:
+            i_dtype = 'bf16'
+
+        i_thread.initialize(
+            filepath=model_filepath,
+            device="cuda:0",
+            dtype=i_dtype,
+            prescale=f_vi['shape'] if do_resize else None
+        )
+        d_thread.set_consumer(i_thread)
+        e_thread.set_producer(i_thread)
+
+        i_thread.set_producer(d_thread)
+        i_thread.set_consumer(e_thread)
+
 
 
     # Filters
     #-------------------------------------------------------------------------
-    #   create a list of functions
-    functions: list[Callable] = []
-    # if do_resize:
-    #     functions.append(gpu_resize_)
+    # Not filters if TRT inference before
     f_thread = None
+    if arguments.model:
+        # ...
 
-    d_thread.set_consumer(e_thread)
-    e_thread.set_producer(d_thread)
+
+        d_thread.set_consumer(f_thread)
+        e_thread.set_producer(f_thread)
+        # f_thread.set_producer(d_thread)
+        # f_thread.set_consumer(e_thread)
+
 
 
     # Progress bar
@@ -242,7 +279,7 @@ def main():
 
     # Main loop
     #-------------------------------------------------------------------------
-    start_threads(
+    run_threads(
         d_thread=d_thread,
         e_thread=e_thread,
         i_threads=[i_thread, f_thread],

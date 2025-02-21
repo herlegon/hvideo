@@ -10,9 +10,12 @@ from torch import Tensor
 from media import FShape
 from media.decoder import decoder_subprocess
 from media.utils import VideoPipeInfo
-from .dh_transfers import htod_transfer
-from .torch_tensor import img_to_tensor, np_dtype_to_torch
+from pynnlib import (
+    img_to_tensor,
+    np_dtype_to_torch,
+)
 from .types import BaseThread, NnFrame
+from .dh_transfers import htod_transfer
 
 from utils.p_print import *
 

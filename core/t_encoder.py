@@ -16,7 +16,8 @@ from media.encoder import EncoderSettings, encoder_subprocess
 from utils.p_print import *
 
 from .types import BaseThread, NnFrame
-from .torch_tensor import tensor_to_img, np_dtype_to_torch
+from pynnlib import tensor_to_img, np_dtype_to_torch
+from .dh_transfers import dtoh_transfer
 
 
 

@@ -1,0 +1,10 @@
+numpy==1.26.4
+requests
+rich
+scipy
+opencv-python
+onnx
+onnxruntime
+timm
+einops
+setuptools
