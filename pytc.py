@@ -37,6 +37,11 @@ from utils.logger import logger, set_logger_settings
 from utils.p_print import *
 from utils.path_utils import absolute_path
 from utils.time_conversions import current_datetime_str
+try:
+    import winsound
+except ImportError:
+    pass
+
 
 
 # Keep here to fasten modifications
@@ -284,11 +289,14 @@ def main():
     run_threads(
         d_thread=d_thread,
         e_thread=e_thread,
-        i_threads=[i_thread, f_thread],
+        i_threads=(i_thread, f_thread),
         progress_thread=progress_thread
     )
 
     torch.cuda.empty_cache()
+
+    if sys.platform == "win32":
+        winsound.Beep(frequency=440, duration=200)
 
 
 if __name__ == "__main__":

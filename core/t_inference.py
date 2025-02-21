@@ -37,7 +37,7 @@ class InferenceThread(BaseThread):
         filepath: str,
         device: str = "cuda:0",
         dtype: Idtype = 'fp16',
-        prescale: list[int, int, int] | None = None,
+        prescale: list[int, int, int] | float | None = None,
     ):
         """Isolate for fps measurement"""
         trt_model: NnModel = nnlib.open(filepath, device)
@@ -51,8 +51,10 @@ class InferenceThread(BaseThread):
             device=device,
             dtype=dtype
         )
-
-        self.prescale = (prescale[1], prescale[0])
+        if isinstance(prescale, list | tuple):
+            self.prescale = (prescale[1], prescale[0])
+        else:
+            self.prescale = prescale
 
 
     def run(self):

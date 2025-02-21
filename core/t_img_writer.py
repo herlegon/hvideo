@@ -24,24 +24,15 @@ class ImgWriterThread(BaseThread):
         self,
         name: str | None = None,
         device: str = "cuda:0",
-        directory: str = "",
-        basename_template: str = "",
+        filepaths: str = "",
     ) -> None:
-        """
-        basename_template = "img_{index}.png"
-        {index}
-        {f_no}
-        """
         super().__init__(name=name)
         self._written: int = 0
         self._stop_event: Event = Event()
         self.in_queue: Queue = Queue(3)
         self.device: str | torch.device = device
         self.image_count: int = 0
-        self.directory: str = directory
-        if not basename_template:
-            basename_template = "{index}.png"
-        self.basename_template: str = basename_template
+        self.filepaths: str = filepaths
 
 
     @property
@@ -74,7 +65,6 @@ class ImgWriterThread(BaseThread):
                 not self._stop_event.is_set()
                 and remaining > 0
             ):
-
                 # Wait for a frame or a poison pill
                 input = in_queue.get(block=True)
                 if input is None or self._stop_event.is_set():
@@ -112,18 +102,10 @@ class ImgWriterThread(BaseThread):
                     d_img=d_img,
                     cuda_stream=cuda_stream,
                 )
-                out_img = np.ascontiguousarray(out_img)
 
-                filepath: str = absolute_path(
-                    os.path.join(
-                        self.directory,
-                        self.basename_template.format(
-                            index=index,
-                            f_no=frame.f_no
-                        )
-                    )
+                write_image(
+                    self.filepaths[frame.f_no], np.ascontiguousarray(out_img)
                 )
-                write_image(filepath, out_img)
 
                 remaining -= 1
                 index += 1

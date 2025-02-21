@@ -67,7 +67,7 @@ def args_parse() -> Namespace:
         "-suffix",
         "--suffix",
         type=str,
-        default="_pytc",
+        default="",
         required=False,
         help="""Suffix used when no output filename is specified.
 """
@@ -295,17 +295,21 @@ def check_args(
 
     # Use output filepath before verification because it uses the
     #   output directory to store the log file
-    out_media_path: str = absolute_path(args.output)
+    out_media_fp: str = absolute_path(args.output)
+    suffix: str = args.suffix
     if not args.output:
         dirname, basename, extension = path_split(in_media_path)
-        out_media_path: str = os.path.join(
-            dirname, f"{basename}{args.suffix}{add_suffix}{extension}"
+        if not suffix:
+            suffix = "_pytc"
+        out_media_fp: str = os.path.join(
+            dirname, f"{basename}{suffix}{add_suffix}{extension}"
         )
-    if out_media_path == in_media_path:
-        sys.exit(red(f"Error: output file must be different from input file: {out_media_path}"))
+
+    if out_media_fp == in_media_path:
+        sys.exit(red(f"Error: output file must be different from input file: {out_media_fp}"))
 
     # Verify that the file can be saved
-    out_dir: str = path_split(out_media_path)[0]
+    out_dir: str = path_split(out_media_fp)[0]
     if not os.path.isdir(out_dir):
         out_dir_parent = absolute_path(os.path.join(out_dir, os.pardir))
         try:

@@ -4,7 +4,7 @@ from queue import Queue
 import torch
 from typing import TYPE_CHECKING
 
-from gpu_filters.gpu_resize import gpu_resize_to_
+from gpu_filters.gpu_resize import gpu_resize_, gpu_resize_to_
 
 from .types import NnFrame
 from pynnlib import (
@@ -68,11 +68,19 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
 
             # Resize before inference
             if self.prescale is not None:
-                gpu_resize_to_(
-                    frame=frame,
-                    out_size=self.prescale,
-                    interpolation_method="bilinear"
-                )
+                if isinstance(self.prescale, list | tuple):
+                    gpu_resize_to_(
+                        frame=frame,
+                        out_size=self.prescale,
+                        interpolation_method="bilinear"
+                    )
+                else:
+                    gpu_resize_(
+                        frame=frame,
+                        scale_factor=self.prescale,
+                        interpolation_method="bilinear"
+                    )
+
 
             # Input tensor
             in_tensor = frame.tensor

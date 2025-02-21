@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pprint import pprint
 from threading import Event, Lock
+from warnings import warn
 import torch
 from torch import Tensor
 from media.images_io import load_image
@@ -12,7 +13,7 @@ from .dh_transfers import htod_transfer
 from utils.p_print import *
 
 
-class DecoderThread(BaseThread):
+class ImgReaderThread(BaseThread):
     def __init__(
         self,
         filepaths: list[str],
@@ -68,9 +69,13 @@ class DecoderThread(BaseThread):
                 and remaining > 0
             ):
                 # Read image
-                h_img: Tensor = torch.from_numpy(
-                    load_image(filepath=self.filepaths[f_index])
-                )
+                in_fp: str = self.filepaths[f_index]
+                try:
+                    h_img: Tensor = torch.from_numpy(load_image(filepath=in_fp))
+                except:
+                    warn(yellow(f"Failed opening {in_fp}"))
+                    remaining -= 1
+                    f_index += 1
 
                 if h_img.nbytes != host_mem.nbytes or host_mem is None:
                     del host_mem
@@ -109,13 +114,13 @@ class DecoderThread(BaseThread):
 
                 # Create a frame object
                 frame: NnFrame = NnFrame(
-                    f_no=f_no,
+                    f_no=f_index,
                     tensor=d_tensor,
                     last=bool(remaining == 0)
                 )
 
                 print(
-                    f"[V][IR] ({lightgreen(f_index)}) ({f_no}), {remaining}. Tensor:",
+                    f"[V][IR] ({lightgreen(f_index)}), {remaining}. Tensor:",
                     f"{d_tensor.shape}, {d_tensor.dtype}"
                 )
 
@@ -124,7 +129,6 @@ class DecoderThread(BaseThread):
 
                 remaining -= 1
                 f_index += 1
-                f_no += 1
 
 
         print(lightgreen(f"[V][IR] End of decoding"))

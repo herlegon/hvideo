@@ -9,11 +9,11 @@ from pprint import pprint
 import cv2
 import numpy as np
 import torch
-from ..utils.np_dtypes import (
+from utils.np_dtypes import (
     np_to_float32,
     np_to_uint8,
 )
-from ..utils.path_utils import absolute_path
+from utils.path_utils import absolute_path
 CPU_COUNT: int = multiprocessing.cpu_count()
 
 
