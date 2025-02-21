@@ -4,9 +4,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Thread
 from typing import Any, Iterable, Mapping, Type, TYPE_CHECKING
-import cupy as cp
 import numpy as np
 import torch
+from torch import Tensor
 
 if TYPE_CHECKING:
     from .t_progress import ProgressThread
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 @dataclass(slots=True)
 class NnFrame:
     f_no: int = 0
-    tensor: cp.ndarray | np.ndarray = None
+    tensor: Tensor | np.ndarray = None
     channel_last: bool = False
 
     # last flag is used by temporal models
