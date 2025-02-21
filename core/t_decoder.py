@@ -13,6 +13,8 @@ from media.utils import VideoPipeInfo
 from pynnlib import (
     img_to_tensor,
     np_dtype_to_torch,
+    Idtype,
+    IdtypeToTorch,
 )
 from .types import BaseThread, NnFrame
 from .dh_transfers import htod_transfer
@@ -28,7 +30,7 @@ class DecoderThread(BaseThread):
         self,
         video_pipe_info: VideoPipeInfo,
         device: str = "cuda:0",
-        tensor_dtype: torch.dtype = torch.float32,
+        tensor_dtype: torch.dtype | Idtype = 'fp32',
         name: str | None = None,
         debug: bool = False,
     ) -> None:
@@ -52,7 +54,11 @@ class DecoderThread(BaseThread):
         )
 
         self.device: str = device
-        self.tensor_dtype: torch.dtype = tensor_dtype
+        self.tensor_dtype: torch.dtype = (
+            IdtypeToTorch[tensor_dtype]
+            if not isinstance(tensor_dtype, torch.dtype)
+            else tensor_dtype
+        )
 
 
     @property
@@ -62,7 +68,6 @@ class DecoderThread(BaseThread):
 
     @torch.inference_mode()
     def run(self) -> None:
-        verbose: bool = self.verbose
 
         if self.consumer is None:
             raise ValueError(red("[E] No consumer defined for the decoder."))
@@ -98,7 +103,6 @@ class DecoderThread(BaseThread):
                     self.sub_process.stdout.read(img_nbytes),
                     dtype=torch.uint8,
                 )
-                remaining -= 1
 
                 # Wait until resource (GPU) is available
                 self._lock.acquire(blocking=True)
@@ -133,11 +137,11 @@ class DecoderThread(BaseThread):
                     tensor=d_tensor,
                     last=bool(remaining == 0)
                 )
-
-                print(
-                    f"[V][D] ({lightgreen(f_index)}) ({f_no}), {remaining}. Tensor:",
-                    f"{d_tensor.shape}, {d_tensor.dtype}"
-                )
+                if self.verbose:
+                    print(
+                        f"[V][D] ({lightgreen(f_index)}) ({f_no}), {remaining}. Tensor:",
+                        f"{d_tensor.shape}, {d_tensor.dtype}"
+                    )
 
                 # Send the frame to the consumer
                 self.consumer.put_frame(frame)
@@ -149,8 +153,8 @@ class DecoderThread(BaseThread):
             # except:
             #     if verbose:
             #         print(lightgreen(f"[V][D] Encountered end of file or error. Decoded {f_no} frames"))
-
-        print(lightgreen(f"[V][D] End of decoding"))
+        if self.verbose:
+            print(lightgreen(f"[V][D] End of decoding"))
 
 
     def stop(self, force: bool=False) -> None:

@@ -195,7 +195,7 @@ def decoder_subprocess(
     try:
         sub_process = subprocess.Popen(
             d_command,
-            stdin=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )

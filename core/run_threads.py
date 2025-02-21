@@ -12,16 +12,18 @@ def run_threads(
     i_threads: list[BaseThread] | BaseThread,
     e_thread: EncoderThread,
     progress_thread: ProgressThread | None = None,
-    total_frames: int = 0
-) -> int:
+    total_frames: int = 0,
+    debug: bool = False
+) -> float:
 
     # Start all threads
-    if not isinstance(i_threads, list):
+    if not isinstance(i_threads, list | tuple):
         i_threads = [i_threads]
-    i_threads: list[BaseThread]
 
-    d_thread.verbose = True
-    e_thread.verbose = True
+    d_thread.verbose = debug
+    e_thread.verbose = debug
+
+    start_time = time.time()
 
     d_thread.set_produce_flag()
     for thread in (
@@ -41,7 +43,8 @@ def run_threads(
         if not decoding:
             # All frames encoded, send poison pill to all inference threads
             if e_thread.encoded == total_frames and ask_to_end:
-                print("[V][C] All frames encoded, send poison pill to encoder")
+                if debug:
+                    print("[V][C] All frames encoded, send poison pill to encoder")
                 e_thread.put_frame(None)
                 ask_to_end = False
 
@@ -50,7 +53,8 @@ def run_threads(
                 not d_thread.is_alive()
                 and not e_thread.is_alive()
             ):
-                print("[V][C] All frames encoded, encoder has ended")
+                if debug:
+                    print("[V][C] All frames encoded, encoder has ended")
                 encoded = e_thread.encoded
                 break
             time.sleep(0.0001)
@@ -59,7 +63,8 @@ def run_threads(
         time.sleep(0.0001)
         # Detect end of decoding
         if not d_thread.is_alive() and decoding:
-            print("[V][C] decoder has ended")
+            if debug:
+                print("[V][C] decoder has ended")
             err, message = d_thread.error_encountered()
             if err:
                 print(red(message))
@@ -67,7 +72,8 @@ def run_threads(
             else:
                 decoding = False
                 ask_to_end = True
-                print(f"[V][C] wait for {total_frames} to be encoded")
+                if debug:
+                    print(f"[V][C] wait for {total_frames} to be encoded")
 
         time.sleep(0.0001)
         if not e_thread.is_alive() and d_thread.is_alive():
@@ -76,6 +82,9 @@ def run_threads(
             break
 
         time.sleep(0.0001)
+
+    elapsed = time.time() - start_time
+    progress_thread.put(0, force=True)
 
     # Stop remaining threads if not already stopped (error cases)
     for thread in i_threads:
@@ -91,8 +100,6 @@ def run_threads(
             time.sleep(0.5)
 
     if progress_thread is not None:
-        progress_thread.put(0, force=True)
-        total_elapsed: float = progress_thread.elapsed()
         while True:
             if progress_thread is not None and progress_thread.is_alive():
                 progress_thread.stop(force=True)
@@ -104,6 +111,7 @@ def run_threads(
         if thread is not None and thread.is_alive():
             print(red(f"Error: {thread.name} is still alive"))
 
+    return elapsed
 
 
 

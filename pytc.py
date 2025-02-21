@@ -31,6 +31,9 @@ from media import (
 )
 from pynnlib import (
     Idtype,
+    NnModel,
+    NnFrameworkType,
+    nnlib,
 )
 from utils.arg_parse import args_parse, check_args
 from utils.logger import logger, set_logger_settings
@@ -98,7 +101,6 @@ def main():
     logger.debug(f"input: {vi_fp}")
 
 
-
     # Open media file, create the input info
     #-------------------------------------------------------------------------
     in_media_info: MediaInfo = open_media_file(
@@ -107,7 +109,7 @@ def main():
     in_vi: VideoInfo = in_media_info['video']
     seek: DecoderSeek = get_seek(in_vi=in_vi, args=arguments)
 
-
+    step_no: int = 1
 
     # Video info of the filter
     #-------------------------------------------------------------------------
@@ -135,15 +137,18 @@ def main():
                 w,
                 c
             )
+        print(f" {step_no}. resize to {f_vi['shape'][1]}x{f_vi['shape'][0]}")
+        step_no += 1
 
     #   resize with sar. Default: resize height
     if not do_resize_with_fsar and any([x != 1 for x in f_vi['sar']]):
         do_resize = True
         f_vi['shape'] = (int(h * f_vi['sar'][0] / f_vi['sar'][1]), w, c)
+        print(f" {step_no}. resize to {f_vi['shape'][1]}x{f_vi['shape'][0]}")
+        step_no += 1
 
     if do_resize:
         warn(yellow(f"[W] TODO: validate resize: {in_vi['shape']} -> {f_vi['shape']}"))
-
 
 
     # Resize before inference
@@ -151,12 +156,24 @@ def main():
     if arguments.resize != 1:
         do_resize = True
         resize_factor = arguments.resize
-        f_vi['shape'] = (int(resize_factor * h), int(resize_factor * w), c)
+        h, w, c = f_vi['shape']
+        f_vi['shape'] = (int(resize_factor * h + 0.5), int(resize_factor * w + 0.5), c)
 
+    elif arguments.resize_to:
+        do_resize = True
+        w, h = arguments.resize_to.split("x")
+        f_vi['shape'] = (int(h), int(w), f_vi['shape'][-1])
+
+    pre_resize_shape: list | None = None
+    if do_resize:
+        pre_resize_shape = f_vi['shape']
+        print(f" {step_no}. resize to {f_vi['shape'][1]}x{f_vi['shape'][0]}")
+        step_no += 1
 
 
     # Scale factor of the filters
     #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    #-------------------------------------------------------------------------
     #   The scale of the filter MUST BE 1x. If not,
     #   the size has to be modified here
     f_scale: float = 1.
@@ -164,6 +181,32 @@ def main():
         f_vi['shape'] = (int(f_scale * h), int(f_scale * w), c)
 
 
+    # TensorRT inference
+    #-------------------------------------------------------------------------
+    i_dtype = 'fp32'
+    if arguments.model:
+        model_filepath: str = absolute_path(arguments.model)
+        print(lightcyan("Engine:"), os.path.basename(model_filepath))
+        trt_model: NnModel = nnlib.open(model_filepath, device="cuda:0")
+        if trt_model.framework.type != NnFrameworkType.TENSORRT:
+            raise ValueError(red(f"[E] {model_filepath} is not a TensorRT engine"))
+        h, w, c = f_vi['shape']
+        f_vi['shape'] = (int(trt_model.scale * h), int(trt_model.scale * w), c)
+        if arguments.debug:
+            print(trt_model)
+
+        i_dtype: Idtype = 'fp16'
+        if arguments.fp32:
+            i_dtype = 'fp32'
+        elif arguments.fp16:
+            i_dtype = 'fp16'
+        elif arguments.bf16:
+            i_dtype = 'bf16'
+
+        print(f" {step_no}. TRT inference, scale: {trt_model.scale}, dtype: {i_dtype}")
+        step_no += 1
+
+    h, w, c = f_vi['shape']
 
     # Output video info and encoder settings
     #-------------------------------------------------------------------------
@@ -181,13 +224,33 @@ def main():
         print(lightcyan("Encoder settings:"))
         pprint(e_settings)
     # optional, may be customized
-    out_vi.update({
-        'metadata': {
-            'pytc': current_datetime_str()
-        }
-    })
+    if arguments.model:
+        out_vi.update({
+            'metadata': {
+                'model': os.path.basename(model_filepath)
+            }
+        })
 
-    total_frames: int = out_vi['frame_count']
+    # known issue: wrong info is codec/pixfmt in custom params
+    print(
+        lightcyan("Encoder:"),
+        f"{out_vi['shape'][1]}x{out_vi['shape'][0]}, {e_settings.vcodec.value}, {e_settings.pix_fmt}"
+    )
+    step_no += 1
+
+    # Filters
+    #-------------------------------------------------------------------------
+    # Not filters if TRT inference before
+    f_thread = None
+    if not arguments.model:
+        print(lightcyan("FILTERS"))
+        # ...
+
+
+        d_thread.set_consumer(f_thread)
+        e_thread.set_producer(f_thread)
+        # f_thread.set_producer(d_thread)
+        # f_thread.set_consumer(e_thread)
 
 
 
@@ -209,46 +272,24 @@ def main():
     )
 
 
-
     # Tensor inference thread
     #-------------------------------------------------------------------------
     i_thread: InferenceThread | None= None
-    i_dtype = 'fp32'
     if arguments.model:
         model_filepath: str = absolute_path(arguments.model)
-        i_thread = InferenceThread(name="trt_inference")
-        i_dtype: Idtype = 'fp16'
-        if arguments.fp32:
-            i_dtype = 'fp32'
-        elif arguments.fp16:
-            i_dtype = 'fp16'
-        elif arguments.bf16:
-            i_dtype = 'bf16'
+        trt_model: NnModel = nnlib.open(model_filepath, device="cuda:0")
+        if trt_model.framework.type != NnFrameworkType.TENSORRT:
+            raise ValueError(red(f"[E] {model_filepath} is not a TensorRT engine"))
 
+        i_thread = InferenceThread(name="trt_inference", debug=arguments.debug)
         i_thread.initialize(
-            filepath=model_filepath,
+            model=trt_model,
             device="cuda:0",
             dtype=i_dtype,
-            prescale=f_vi['shape'] if do_resize else None
+            prescale=pre_resize_shape
         )
         e_thread.set_producer(i_thread)
         i_thread.set_consumer(e_thread)
-
-
-
-    # Filters
-    #-------------------------------------------------------------------------
-    # Not filters if TRT inference before
-    f_thread = None
-    if arguments.model:
-        # ...
-
-
-        d_thread.set_consumer(f_thread)
-        e_thread.set_producer(f_thread)
-        # f_thread.set_producer(d_thread)
-        # f_thread.set_consumer(e_thread)
-
 
 
     # Decoder thread
@@ -276,22 +317,23 @@ def main():
         f_thread.set_producer(d_thread)
 
 
-
     # Progress bar
     #-------------------------------------------------------------------------
+    total_frames: int = out_vi['frame_count']
     progress_thread: ProgressThread = ProgressThread(total=total_frames)
     e_thread.set_progress_thread(progress_thread)
 
 
-
     # Main loop
     #-------------------------------------------------------------------------
-    run_threads(
+    elapsed = run_threads(
         d_thread=d_thread,
         e_thread=e_thread,
         i_threads=(i_thread, f_thread),
         progress_thread=progress_thread
     )
+
+    print(f"elapsed: {elapsed:.03}s ({total_frames/elapsed:.02} fps)")
 
     torch.cuda.empty_cache()
 

@@ -109,6 +109,16 @@ format: 4/3 (or 16/9, etc.)
 \n"""
     )
 
+    parser.add_argument(
+        "-resize_to",
+        "--resize_to",
+        type=str,
+        default="",
+        help="""Resize the video before applying any filter. Format: <width>x<height>.
+example: -resize_to 640x480
+\n"""
+    )
+
     # Seeking
     parser.add_argument(
         "-ss",
@@ -193,10 +203,10 @@ Refer to https://ffmpeg.org//ffmpeg.html#Main-options"
     parser.add_argument(
         "-pix_fmt",
         "--pix_fmt",
-        default="yuv420p10le",
+        default="yuv422p10le",
         required=False,
         help="""FFMpeg pix_fmt. rgb/yuv only.
-recommended: yuv420p, yuv420p10le, yuv420p12le
+recommended: yuv420p, yuv422p10le, yuv422p12le
 \n"""
     )
 
@@ -289,23 +299,23 @@ def check_args(
         returns absolute path of each media files
     """
 
-    in_media_path: str = absolute_path(args.input)
-    if not os.path.isfile(in_media_path):
-        sys.exit(red(f"Error: missing input file {in_media_path}"))
+    in_media_fp: str = absolute_path(args.input)
+    if not os.path.isfile(in_media_fp):
+        sys.exit(red(f"Error: missing input file {in_media_fp}"))
 
     # Use output filepath before verification because it uses the
     #   output directory to store the log file
     out_media_fp: str = absolute_path(args.output)
     suffix: str = args.suffix
     if not args.output:
-        dirname, basename, extension = path_split(in_media_path)
+        dirname, basename, extension = path_split(in_media_fp)
         if not suffix:
             suffix = "_pytc"
         out_media_fp: str = os.path.join(
             dirname, f"{basename}{suffix}{add_suffix}{extension}"
         )
 
-    if out_media_fp == in_media_path:
+    if out_media_fp == in_media_fp:
         sys.exit(red(f"Error: output file must be different from input file: {out_media_fp}"))
 
     # Verify that the file can be saved
@@ -320,4 +330,4 @@ def check_args(
     if not is_access_granted(out_dir, 'w'):
         sys.exit(red(f"Error: no write access to {out_dir}"))
 
-    return in_media_path, out_media_path
+    return in_media_fp, out_media_fp

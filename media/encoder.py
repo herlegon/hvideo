@@ -22,7 +22,7 @@ from .media import (
     MediaInfo,
     VideoInfo,
 )
-from .utils import VideoPipeInfo
+from .utils import VideoPipeInfo, clean_fcomplex
 from .pxl_fmt import PIXEL_FORMAT
 
 
@@ -257,7 +257,34 @@ def generate_ffmpeg_encoder_cmd(
     if sar_dar:
         ffmpeg_command.extend(["-vf", ','.join(sar_dar)])
 
-    ffmpeg_command.extend(["-map", "0:v"])
+
+    # Color space
+    color_settings: ColorSettings = e_settings.color_settings
+    _tmp_array: list[str] = []
+    for k, v in color_settings.__dict__.items():
+        if k == 'color_range':
+            continue
+        if (
+            k not in e_settings.custom_params
+            and v is not None
+        ):
+            _tmp_array.append(f"{k}={v}")
+    if _tmp_array:
+        ffmpeg_command.extend([
+            "-vf",  f"setparams={':'.join(_tmp_array)}"
+        ])
+
+    else:
+        # default to rec709
+        fcomplex_str = clean_fcomplex("""
+            setparams=colorspace=bt709
+                :color_primaries=bt709
+                :color_trc=bt709
+        """)
+        ffmpeg_command.extend([
+            "-vf", fcomplex_str
+        ])
+
 
     # Encoder
     if (
@@ -287,21 +314,6 @@ def generate_ffmpeg_encoder_cmd(
         for k, v in e_settings.codec_settings.__dict__.items():
             ffmpeg_command.extend([f"-{k}", v])
 
-    # Color space
-    color_settings: ColorSettings = e_settings.color_settings
-    _tmp_array: list[str] = []
-    for k, v in color_settings.__dict__.items():
-        if k == 'color_range':
-            continue
-        if (
-            k not in e_settings.custom_params
-            and v is not None
-        ):
-            _tmp_array.append(f"{k}={v}")
-    if _tmp_array:
-        ffmpeg_command.extend([
-            "-vf",  f"setparams={':'.join(_tmp_array)}"
-        ])
 
     k, v = 'color_range', color_settings.color_range
     if (
@@ -325,8 +337,8 @@ def generate_ffmpeg_encoder_cmd(
             ])
 
     # Custom params
-    codec_params: str = e_settings.custom_params
-    ffmpeg_command.extend(codec_params.split(" "))
+    codec_params: list[str] = e_settings.custom_params.split(" ")
+    ffmpeg_command.extend([x for x in codec_params if x])
 
     # Add metadata
     if get_extension(e_settings.filepath) == ".mkv":
@@ -342,9 +354,6 @@ def generate_ffmpeg_encoder_cmd(
     if e_settings.overwrite:
         ffmpeg_command.append('-y')
 
-
-    # _tmp: str = "A:\\py_temporalfix\\external\\ffmpeg\\ffmpeg.exe -hide_banner -loglevel error -stats -f rawvideo -pixel_format yuv444p16le -video_size 1488x1128 -r 25:1 -i pipe:0 -vf setdar=62/47 -vcodec libx264 -bsf:v h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1 -pix_fmt yuv420p -colorspace 1 -color_primaries 1 -color_trc 1 -color_range tv N:\\cache\\g_fin\\eval\\g_fin_005__j_ep99_hr_st_fixed_6_400_x264.mkv -y"
-    # ffmpeg_command = _tmp.split(" ")
 
     return ffmpeg_command
 
@@ -366,7 +375,8 @@ def encoder_subprocess(
     )
 
     if debug:
-        print(lightgreen(f"[V][D] FFmpeg command:"), ' '.join(e_command))
+        print(lightgreen(f"[V][E] FFmpeg command:"), ' '.join(e_command))
+        # pprint(e_command)
 
     # Open subprocess
     sub_process: subprocess.Popen
@@ -375,9 +385,9 @@ def encoder_subprocess(
             e_command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
         )
     except Exception as e:
-        raise ValueError(f"[V][D] Unexpected error: {type(e)}", flush=True)
+        raise ValueError(f"[V][E] Unexpected error: {type(e)}", flush=True)
 
     return sub_process

@@ -92,5 +92,6 @@ class BaseThread(abc.ABC, Thread):
     def set_progress_thread(self, progress_thread: ProgressThread) -> None:
         self.progress_thread = progress_thread
 
+
     def processing(self) -> bool:
         return self._processing

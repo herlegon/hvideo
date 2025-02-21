@@ -5,7 +5,7 @@ from threading import Event
 from media.media import VideoInfo
 from pynnlib import(
     Idtype,
-    NnModel,
+    TrtModel,
     nnlib,
     NnFrameworkType,
     TensorRtSession,
@@ -34,25 +34,22 @@ class InferenceThread(BaseThread):
 
     def initialize(
         self,
-        filepath: str,
+        model: TrtModel,
         device: str = "cuda:0",
         dtype: Idtype = 'fp16',
         prescale: list[int, int, int] | float | None = None,
     ):
         """Isolate for fps measurement"""
-        trt_model: NnModel = nnlib.open(filepath, device)
-        if trt_model.framework.type != NnFrameworkType.TENSORRT:
-            raise ValueError(red(f"[E] {filepath} is not a TensorRT engine"))
 
         self.trt_session: TensorRtSession
         initialize_trt_inference(
             self,
-            model=trt_model,
+            model=model,
             device=device,
             dtype=dtype
         )
         if isinstance(prescale, list | tuple):
-            self.prescale = (prescale[1], prescale[0])
+            self.prescale = (prescale[0], prescale[1])
         else:
             self.prescale = prescale
 

@@ -13,12 +13,15 @@
     ```
 
 # Usage
+`python.exe .\pytc.py --help`
+
 ## args
 ```
 -i <INPUT>
 [-o <OUTPUT>] if not specified, uses the input filepath and suffix
 -suffix <SUFFIX> default `_pytc`
--scale <SCALE> scale applied before the filtering/model
+-resize <RESIZE>> scale applied before the filtering/model
+-resize <RESIZE>> scale applied before the filtering/model
 
 (-fsar <FSAR>) you should never need this
 (-fsar_h <FSAR_H>) you should never need this

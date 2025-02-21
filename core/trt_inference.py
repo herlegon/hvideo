@@ -26,8 +26,6 @@ def initialize_trt_inference(
     device: str = "cuda:0",
     dtype: Idtype = 'fp16',
 ) -> None:
-
-    # Get model and session
     self.trt_session = nnlib.session(model)
     self.trt_session.infer_stream = torch.cuda.Stream(device)
     self.trt_session.initialize(
@@ -39,7 +37,8 @@ def initialize_trt_inference(
 
 @torch.inference_mode()
 def perform_trt_inference(self: InferenceThread, verbose: bool = False):
-    print(cyan(f"[V][I][TRT] TensorRT InferenceThread"))
+    if verbose:
+        print(cyan(f"[V][I][TRT] TensorRT InferenceThread"))
     in_queue: Queue = self.in_queue
 
     d_thread: DecoderThread = self.producer
@@ -112,4 +111,5 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
             e_thread.put_frame(frame)
             d_thread.set_produce_flag()
 
-    print(cyan(f"[V][I][TRT] Ended"))
+    if verbose:
+        print(cyan(f"[V][I][TRT] Ended"))

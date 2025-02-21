@@ -7,6 +7,8 @@ from torch import Tensor
 from media.images_io import load_image
 from pynnlib import (
     img_to_tensor,
+    Idtype,
+    IdtypeToTorch,
 )
 from .types import BaseThread, NnFrame
 from .dh_transfers import htod_transfer
@@ -18,7 +20,7 @@ class ImgReaderThread(BaseThread):
         self,
         filepaths: list[str],
         device: str = "cuda:0",
-        tensor_dtype: torch.dtype = torch.float32,
+        tensor_dtype: torch.dtype | Idtype = 'fp32',
         name: str | None = None,
     ) -> None:
         """Create a thread which purpose is to load images
@@ -36,8 +38,12 @@ class ImgReaderThread(BaseThread):
         self._lock.acquire(blocking=False)
 
         self.device: str = device
-        self.tensor_dtype: torch.dtype = tensor_dtype
         self.filepaths: list[str] = filepaths
+        self.tensor_dtype: torch.dtype = (
+            IdtypeToTorch[tensor_dtype]
+            if not isinstance(tensor_dtype, torch.dtype)
+            else tensor_dtype
+        )
 
 
     @property

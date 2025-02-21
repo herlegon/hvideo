@@ -55,7 +55,7 @@ class ProgressThread(BaseThread):
             "elapsed=",
             TimeElapsedColumn(),
             "fps=",
-            "{task.fields[fps]:<3.1f}",
+            "{task.fields[fps]:<3.2f}",
             "ETA",
             TimeRemainingColumn(),
             refresh_per_second=self.refresh_rate,

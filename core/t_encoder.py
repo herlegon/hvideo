@@ -61,13 +61,12 @@ class EncoderThread(BaseThread):
         # Output stream
         img_shape: FShape = self.vpi.shape
         img_dtype: np.dtype = self.vpi.dtype
-        img_nbytes = self.vpi.nbytes
 
         # Create a cuda stream and allocate Host memory
         cuda_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
         host_mem: Tensor = torch.empty(
-            math.prod(img_shape),
-            dtype=np_dtype_to_torch.get(self.vpi.dtype, self.vpi.dtype),
+            img_shape,
+            dtype=np_dtype_to_torch.get(img_dtype, img_dtype),
             pin_memory=True
         )
 
@@ -118,7 +117,18 @@ class EncoderThread(BaseThread):
                 )
                 out_img = np.ascontiguousarray(out_img)
 
-                self.sub_process.stdin.write(out_img)
+                if verbose:
+                    print(
+                        purple(f"[V][E] send to pipe:"),
+                        f"{out_img.shape}, {out_img.dtype}"
+                    )
+
+                try:
+                    self.sub_process.stdin.write(out_img)
+                except:
+                    pprint(self.sub_process.stderr.read())
+                    break
+
                 remaining -= 1
                 sent = 1
 
@@ -126,41 +136,42 @@ class EncoderThread(BaseThread):
                 if self.progress_thread is not None:
                     self.progress_thread.put(sent)
                 self._encoded += sent
-                print(f"encoded: {self.encoded}")
 
                 if self.producer is not None:
                     self.producer.set_produce_flag()
 
         #     print(red(f"[V][E] Error while executing: "), " ".join(encoder_command))
         self._processing = False
-        print(
-            purple(f"[V][E] All frames encoded"),
-            f"{self._encoded}",
-            flush=True
-        )
-        self.end_encoding(self.sub_process)
+        if verbose:
+            print(
+                purple(f"[V][E] All frames encoded or error"),
+                f"{self._encoded}",
+                flush=True
+            )
+        self.end_encoding()
 
 
     def end_encoding(self) -> bool:
         # Close output video
-        stderr_bytes: bytes | None = None
         stdout_bytes: bytes | None = None
         try:
             # Arbitrary timeout value
-            stdout_bytes, stderr_bytes = self.sub_process.communicate(
+            stdout_bytes, _ = self.sub_process.communicate(
                 input='', timeout=60
             )
         except:
             self.sub_process.kill()
             pass
-        if stdout_bytes is not None:
-            pprint(stdout_bytes.decode('utf-8)'))
 
-        if stderr_bytes is not None:
-            std_str = stderr_bytes.decode('utf-8)')
+        if stdout_bytes is not None:
+            std_str = stdout_bytes.decode('utf-8)')
+            # pprint(std_str)
             # TODO: parse the output file ?
-            for l in std_str:
-                if not l.startswith("x265 [info]"):
+            for l in std_str.split("\n"):
+                if (
+                    not l.startswith("x265 [info]")
+                    and not l.startswith("frame=")
+                ):
                     print(l.strip())
         return True
 
