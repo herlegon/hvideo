@@ -127,14 +127,14 @@ class DecoderThread(BaseThread):
                 # Image to 4D tensor
                 d_tensor: Tensor = img_to_tensor(
                     d_img=d_img,
-                    dtype=tensor_dtype,
+                    tensor_dtype=tensor_dtype,
                     flip_r_b=flip_r_b,
                 )
 
                 # Create a frame object
                 frame: NnFrame = NnFrame(
                     f_no=f_no,
-                    tensor=d_tensor,
+                    tensor=d_tensor.clone(),
                     last=bool(remaining == 0)
                 )
                 if self.verbose:

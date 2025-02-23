@@ -103,7 +103,7 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
                 context.set_tensor_address(engine.get_tensor_name(i), bindings[i])
             context.execute_async_v3(stream_handle=cuda_stream.cuda_stream)
 
-            frame.tensor = torch.clamp_(out_tensor, 0., 1.)
+            frame.tensor = torch.clamp(out_tensor, 0., 1.)
 
             time.sleep(0.0001)
             cuda_stream.synchronize()

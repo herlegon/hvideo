@@ -27,7 +27,7 @@ class InferenceThread(BaseThread):
         super().__init__(name=name)
         self._stop_event = Event()
         self._stop_event.clear()
-        self.in_queue: Queue = Queue(2)
+        self.in_queue: Queue = Queue(1)
         self.verbose = debug
         self.prescale: list[int, int, int] | None = None
 

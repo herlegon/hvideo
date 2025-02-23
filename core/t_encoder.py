@@ -35,7 +35,7 @@ class EncoderThread(BaseThread):
         super().__init__(name=name)
         self._encoded: int = 0
         self._stop_event: Event = Event()
-        self.in_queue: Queue = Queue(3)
+        self.in_queue: Queue = Queue(1)
 
         self.vpi: VideoPipeInfo = video_pipe_info
 
@@ -90,7 +90,7 @@ class EncoderThread(BaseThread):
                     if verbose:
                         print(purple("[V][E] Received Null tensor"))
 
-                    self.end_encoding(self.sub_process)
+                    self.end_encoding()
                     break
 
                 frame: NnFrame = input
@@ -106,7 +106,7 @@ class EncoderThread(BaseThread):
 
                 d_img: Tensor = tensor_to_img(
                     tensor=d_tensor,
-                    dtype=img_dtype,
+                    img_dtype=img_dtype,
                     flip_r_b=flip_r_b,
                 )
 
@@ -153,6 +153,9 @@ class EncoderThread(BaseThread):
 
     def end_encoding(self) -> bool:
         # Close output video
+        if self.sub_process is None:
+            return
+
         stdout_bytes: bytes | None = None
         try:
             # Arbitrary timeout value
