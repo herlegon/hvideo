@@ -1,10 +1,10 @@
+einops
 numpy==1.26.4
-requests
-rich
-scipy
-opencv-python
 onnx
 onnxruntime
-timm
-einops
+opencv-python
+requests
+rich
+safetensors
 setuptools
+tensorrt==10.7.0
