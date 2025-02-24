@@ -2,11 +2,13 @@ from __future__ import annotations
 from enum import IntEnum
 from pprint import pprint
 from queue import Queue
+import time
 from typing import Literal, TYPE_CHECKING
 import torch
 from torch import Tensor
 
 from gpu_filters.gpu_resize import gpu_resize_, gpu_resize_to_
+from media.images_io import write_tensor
 from utils.p_print import *
 from pynnlib import (
     PyTorchModel,
@@ -125,6 +127,7 @@ def initialize_temporal_inference(
 ) -> None:
     self.model = model
     self.cache = TemporalFrameCache()
+    self.infer_stream = torch.cuda.Stream(device)
 
 
 
@@ -202,11 +205,17 @@ def perform_temporal_inference(
                 + window[3] * 0.75
                 + window[4] * 0.5
             ) / 3.5
-            out_tensor = torch.clamp(out_tensor, 0., 1.)
+            out_tensor = torch.clamp_(out_tensor, 0., 1.)
+
+            time.sleep(0.0001)
+            cuda_stream.synchronize()
 
             # get frame to output
             out_frame = cache.current_frame()
             out_frame.tensor = out_tensor
+
+            # Write (debug)
+            write_tensor(f"frame_{out_frame.f_no:02}.png", d_tensor=out_tensor)
 
             e_thread.put_frame(out_frame)
             print(yellow(f"output:"), out_frame.f_no)

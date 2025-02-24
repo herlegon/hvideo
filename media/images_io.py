@@ -9,6 +9,8 @@ from pprint import pprint
 import cv2
 import numpy as np
 import torch
+from torch import Tensor
+from pynnlib import tensor_to_img
 from utils.np_dtypes import (
     np_to_float32,
     np_to_uint8,
@@ -105,3 +107,15 @@ def get_image_list(directory: str | Path, extension: str = '.png') -> list[str]:
         include_hidden=False
     )
     return [os.path.join(directory, f) for f in sorted(files)]
+
+
+def write_tensor(filepath: str, d_tensor: torch.Tensor) -> None:
+    """ Save a 4D tensor as an image". SYnchronous operation. Slow
+    """
+    d_img: Tensor = tensor_to_img(
+        tensor=d_tensor,
+        img_dtype=np.uint8,
+        flip_r_b=True,
+    )
+    h_img: np.ndarray = d_img.detach().cpu().numpy()
+    write_image(filepath, h_img)

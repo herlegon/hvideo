@@ -127,6 +127,7 @@ def initialize_rvrt_inference(
     dtype: Idtype = 'fp16',
 ) -> None:
     self.model = model
+    self.infer_stream = torch.cuda.Stream(device)
 
     # total number of frames
     num_frame_testing = args.tile[0]
