@@ -16,7 +16,7 @@ from core import (
     run_threads,
 )
 
-from core.t_inference import InferenceThread
+from core.t_trt_inference import InferenceThread
 from media import (
     args_to_encoder_settings,
     DecoderSeek,

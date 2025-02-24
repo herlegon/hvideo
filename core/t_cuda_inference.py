@@ -2,23 +2,20 @@ from __future__ import annotations
 import queue
 from queue import Queue
 from threading import Event
-from media.media import VideoInfo
+import torch
 from pynnlib import(
     Idtype,
-    TrtModel,
-    nnlib,
-    NnFrameworkType,
-    TensorRtSession,
+    NnModel,
 )
 from utils.p_print import *
 from .types import NnFrame, BaseThread
-from .trt_inference import (
-    perform_trt_inference,
-    initialize_trt_inference,
+from core.filter_inference import (
+    initialize_filter_inference,
+    perform_filter_inference,
 )
 
 
-class InferenceThread(BaseThread):
+class CudaInferenceThread(BaseThread):
     def __init__(
         self,
         name: str | None = None,
@@ -30,19 +27,19 @@ class InferenceThread(BaseThread):
         self.in_queue: Queue = Queue(1)
         self.verbose = debug
         self.prescale: list[int, int, int] | None = None
+        self.infer_stream: torch.cuda.Stream = None
 
 
     def initialize(
         self,
-        model: TrtModel,
+        model: NnModel | None,
         device: str = "cuda:0",
-        dtype: Idtype = 'fp16',
+        dtype: Idtype = 'fp32',
         prescale: list[int, int, int] | float | None = None,
     ):
         """Isolate for fps measurement"""
 
-        self.trt_session: TensorRtSession
-        initialize_trt_inference(
+        initialize_filter_inference(
             self,
             model=model,
             device=device,
@@ -55,7 +52,7 @@ class InferenceThread(BaseThread):
 
 
     def run(self):
-        perform_trt_inference(self, self.verbose)
+        perform_filter_inference(self, self.verbose)
 
         while not self.in_queue.empty():
             self.in_queue.get_nowait()

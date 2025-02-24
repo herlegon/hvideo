@@ -2,67 +2,65 @@ from __future__ import annotations
 import time
 from queue import Queue
 import torch
+from torch import Tensor
 from typing import TYPE_CHECKING
+from gpu_filters.gpu_resize import gpu_resize_, gpu_resize_to_
+
 from pynnlib import (
     Idtype,
-    nnlib,
-    TrtModel,
+    NnModel,
 )
-
-from gpu_filters.gpu_resize import gpu_resize_, gpu_resize_to_
 from utils.p_print import *
 if TYPE_CHECKING:
-    from .t_trt_inference import InferenceThread
+    from .t_cuda_inference import CudaInferenceThread
+    from .types import NnFrame
     from .t_decoder import DecoderThread
     from .t_encoder import EncoderThread
-    from .types import NnFrame
 
 
 
-def initialize_trt_inference(
-    self: InferenceThread,
-    model: TrtModel,
+def initialize_filter_inference(
+    self: CudaInferenceThread,
+    model: NnModel | None,
     device: str = "cuda:0",
     dtype: Idtype = 'fp16',
 ) -> None:
-    self.trt_session = nnlib.session(model)
-    self.trt_session.infer_stream = torch.cuda.Stream(device)
-    self.trt_session.initialize(
-        device=device,
-        dtype=dtype,
-        warmup=False,
-    )
+    """Initialize internale variables, models, ...
+    """
+
+    # self.cuda_session = nnlib.session(model)
+    self.infer_stream= torch.cuda.Stream(device)
+    # self.cuda_session.initialize(
+    #     device=device,
+    #     dtype=dtype,
+    #     warmup=False,
+    # )
+    pass
 
 
 @torch.inference_mode()
-def perform_trt_inference(self: InferenceThread, verbose: bool = False):
+def perform_filter_inference(self: CudaInferenceThread, verbose: bool = False):
     if verbose:
-        print(cyan(f"[V][I][TRT] TensorRT InferenceThread"))
+        print(cyan(f"[V][I][FILTER] Cuda InferenceThread"))
     in_queue: Queue = self.in_queue
 
     d_thread: DecoderThread = self.producer
     e_thread: EncoderThread = self.consumer
 
-    session = self.trt_session
-    context, engine = session.context, session.engine
-    session_dtype: torch.dtype = session.dtype
-    if session_dtype == torch.bfloat16:
-        session_dtype = torch.float32
-    cuda_stream = session.infer_stream
-
-    scale = session.model.scale
+    cuda_stream = self.infer_stream
+    # scale = session.model.scale
 
     with torch.cuda.stream(cuda_stream):
         while not self._stop_event.is_set():
             if verbose:
-                print(cyan("[V][I][TRT] waiting"))
+                print(cyan("[V][I][FILTER] waiting"))
             input = in_queue.get(block=True)
             if input is None or self._stop_event.is_set():
                 break
             frame: NnFrame = input
 
             if verbose:
-                verbose_prefix: str = f"[V][I][TRT][{frame.f_no}]"
+                verbose_prefix: str = f"[V][I][FILTER][{frame.f_no}]"
 
             # Resize before inference
             if self.prescale is not None:
@@ -79,28 +77,16 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
                         interpolation_method="bilinear"
                     )
 
-
             # Input tensor
             in_tensor = frame.tensor
             n, c, in_h, in_w = in_tensor.shape
-            in_tensor = in_tensor.to(dtype=session_dtype)
-            in_tensor = torch.ravel(in_tensor)
+            # in_tensor = in_tensor.to(dtype=...)
             if verbose:
                 print(blue(f"{verbose_prefix} in tensor dtype:{in_tensor.dtype}"))
 
-            # Prepare output tensor in same device
-            out_tensor_shape = (n, c, in_h * scale, in_w * scale)
-            out_tensor: torch.Tensor = torch.empty(
-                out_tensor_shape,
-                dtype=session_dtype,
-                device=in_tensor.device
-            )
-
             # Perform simple inference
-            bindings = [in_tensor.data_ptr(), out_tensor.data_ptr()]
-            for i in range(engine.num_io_tensors):
-                context.set_tensor_address(engine.get_tensor_name(i), bindings[i])
-            context.execute_async_v3(stream_handle=cuda_stream.cuda_stream)
+
+            out_tensor: Tensor
 
             frame.tensor = torch.clamp(out_tensor, 0., 1.)
 
@@ -111,4 +97,4 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
             d_thread.set_produce_flag()
 
     if verbose:
-        print(cyan(f"[V][I][TRT] Ended"))
+        print(cyan(f"[V][I][FILTER] Ended"))
