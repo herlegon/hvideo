@@ -53,7 +53,6 @@ class ImgReaderThread(BaseThread):
 
     @torch.inference_mode()
     def run(self) -> None:
-        verbose: bool = self.verbose
 
         if self.consumer is None:
             raise ValueError(red("[E] No consumer defined for the decoder."))
@@ -121,14 +120,14 @@ class ImgReaderThread(BaseThread):
                 # Create a frame object
                 frame: NnFrame = NnFrame(
                     f_no=f_index,
-                    tensor=d_tensor,
+                    tensor=d_tensor.clone(),
                     last=bool(remaining == 0)
                 )
-
-                print(
-                    f"[V][IR] ({lightgreen(f_index)}), {remaining}. Tensor:",
-                    f"{d_tensor.shape}, {d_tensor.dtype}"
-                )
+                if self.verbose:
+                    print(
+                        f"[V][IR] ({lightgreen(f_index)}), {remaining}. Tensor:",
+                        f"{d_tensor.shape}, {d_tensor.dtype}"
+                    )
 
                 # Send the frame to the consumer
                 self.consumer.put_frame(frame)
@@ -136,8 +135,8 @@ class ImgReaderThread(BaseThread):
                 remaining -= 1
                 f_index += 1
 
-
-        print(lightgreen(f"[V][IR] End of decoding"))
+        if self.verbose:
+            print(lightgreen(f"[V][IR] End of images"))
 
 
     def stop(self, force: bool=False) -> None:

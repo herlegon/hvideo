@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-import math
 import numpy as np
 from pprint import pprint
 from queue import Queue
@@ -7,16 +5,14 @@ import subprocess
 from threading import Event
 import torch
 from torch import Tensor
-from typing import Callable
 
+from pynnlib import tensor_to_img, np_dtype_to_torch
 from core.dh_transfers import dtoh_transfer
-from media.media import FShape, MediaInfo, VideoInfo
+from media import FShape, MediaInfo, VideoInfo
 from media.utils import VideoPipeInfo
 from media.encoder import EncoderSettings, encoder_subprocess
 from utils.p_print import *
-
 from .types import BaseThread, NnFrame
-from pynnlib import tensor_to_img, np_dtype_to_torch
 from .dh_transfers import dtoh_transfer
 
 
@@ -89,7 +85,6 @@ class EncoderThread(BaseThread):
                 if input is None or self._stop_event.is_set():
                     if verbose:
                         print(purple("[V][E] Received Null tensor"))
-
                     self.end_encoding()
                     break
 
@@ -115,7 +110,6 @@ class EncoderThread(BaseThread):
                     d_img=d_img,
                     cuda_stream=cuda_stream,
                 )
-                out_img = np.ascontiguousarray(out_img)
 
                 if verbose:
                     print(

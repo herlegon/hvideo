@@ -35,7 +35,7 @@ def dtoh_transfer(
     time.sleep(0.0001)
     cuda_stream.synchronize()
 
-    return host_mem.numpy()
+    return np.ascontiguousarray(host_mem.numpy())
 
 
 
@@ -45,9 +45,8 @@ def dtoh_transfer_sync(
 ) -> np.ndarray:
     """Synchronous transfer from GPU to CPU.
     """
-    out_shape: tuple[int, int, int] = d_img.shape
-    host_mem.copy_(d_img.ravel(), non_blocking=False)
-    return host_mem.view(out_shape).numpy()
+    host_mem.copy_(d_img, non_blocking=False)
+    return np.ascontiguousarray(host_mem.numpy())
 
 
 
@@ -57,7 +56,7 @@ def htod_transfer_sync(
     device: str = "cuda:0",
 ) -> Tensor:
     host_mem.copy_(
-        np.ascontiguousarray(h_img), non_blocking=False
+        torch.from_numpy(np.ascontiguousarray(h_img)), non_blocking=False
     )
-    d_img: Tensor = host_mem.to(device=device)
+    d_img: Tensor = host_mem.detach().to(device=device)
     return d_img

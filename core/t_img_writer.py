@@ -1,5 +1,4 @@
 import math
-import os
 import numpy as np
 from pprint import pprint
 from queue import Queue
@@ -11,12 +10,11 @@ from pynnlib import tensor_to_img
 from core.dh_transfers import dtoh_transfer
 from media.images_io import write_image
 from utils.p_print import *
-from utils.path_utils import absolute_path
 from .types import BaseThread, NnFrame
 from .dh_transfers import dtoh_transfer
 
 
-# Save as images: 8-bit png
+# Save as 8-bit png
 
 
 class ImgWriterThread(BaseThread):
@@ -43,6 +41,7 @@ class ImgWriterThread(BaseThread):
     @property
     def encoded(self) -> int:
         # Use this for compatibility with EncoderThread
+        # i.e. use the same main loop
         return self._written
 
 
@@ -89,6 +88,7 @@ class ImgWriterThread(BaseThread):
                     flip_r_b=True,
                 )
 
+                # Use the same pinned memory if possible
                 if host_mem is None or host_mem.shape != d_img.shape:
                     del host_mem
                     host_mem: Tensor = torch.empty(
@@ -103,9 +103,7 @@ class ImgWriterThread(BaseThread):
                     cuda_stream=cuda_stream,
                 )
 
-                write_image(
-                    self.filepaths[frame.f_no], np.ascontiguousarray(out_img)
-                )
+                write_image(self.filepaths[frame.f_no], out_img)
 
                 remaining -= 1
                 index += 1

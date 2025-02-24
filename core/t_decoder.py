@@ -18,11 +18,9 @@ from pynnlib import (
 )
 from .types import BaseThread, NnFrame
 from .dh_transfers import htod_transfer
-
 from utils.p_print import *
 
 warnings.filterwarnings("ignore", category=UserWarning, message=".*non-writable tensors.*")
-
 
 
 class DecoderThread(BaseThread):
@@ -150,9 +148,6 @@ class DecoderThread(BaseThread):
                 f_index += 1
                 f_no += 1
 
-            # except:
-            #     if verbose:
-            #         print(lightgreen(f"[V][D] Encountered end of file or error. Decoded {f_no} frames"))
         if self.verbose:
             print(lightgreen(f"[V][D] End of decoding"))
 
