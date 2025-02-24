@@ -6,6 +6,9 @@ from .t_encoder import EncoderThread
 from .t_progress import ProgressThread
 from .t_trt_inference import InferenceThread
 
+from .t_cuda_inference import CudaInferenceThread
+from .t_cuda_temp_inference import CudaTemporalInferenceThread
+
 from .t_img_reader import ImgReaderThread
 from .t_img_writer import ImgWriterThread
 
@@ -19,6 +22,8 @@ __all__ = [
     "EncoderThread",
     "ProgressThread",
     "InferenceThread",
+    "CudaInferenceThread",
+    "CudaTemporalInferenceThread",
 
     "ImgReaderThread",
     "ImgWriterThread",
