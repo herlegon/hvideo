@@ -337,7 +337,7 @@ def main():
         progress_thread=progress_thread
     )
 
-    print(f"elapsed: {elapsed:.03}s ({total_frames/elapsed:.02} fps)")
+    print(f"elapsed: {elapsed:.02f}s ({total_frames/elapsed:.02f}fps)")
 
     torch.cuda.empty_cache()
 
