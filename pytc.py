@@ -14,6 +14,7 @@ from core import (
     EncoderThread,
     ProgressThread,
     run_threads,
+    CudaTemporalInferenceThread,
 )
 
 from core.t_trt_inference import InferenceThread
@@ -238,21 +239,6 @@ def main():
     )
     step_no += 1
 
-    # Filters
-    #-------------------------------------------------------------------------
-    # Not filters if TRT inference before
-    f_thread = None
-    if not arguments.model:
-        print(lightcyan("FILTERS"))
-        # ...
-
-
-        d_thread.set_consumer(f_thread)
-        e_thread.set_producer(f_thread)
-        # f_thread.set_producer(d_thread)
-        # f_thread.set_consumer(e_thread)
-
-
 
     # Encoder thread
     #-------------------------------------------------------------------------
@@ -270,6 +256,24 @@ def main():
         in_media_info=in_media_info,
         debug=arguments.debug
     )
+
+
+    # Filters
+    #-------------------------------------------------------------------------
+    # Not filters if TRT inference before
+    f_thread = None
+    if not arguments.model:
+        f_thread = CudaTemporalInferenceThread(
+            name="temporal_inference", debug=arguments.debug
+        )
+        f_thread.initialize(
+            model=None,
+            device="cuda:0",
+            dtype='fp16',
+            prescale=pre_resize_shape
+        )
+        e_thread.set_producer(f_thread)
+        f_thread.set_consumer(e_thread)
 
 
     # Tensor inference thread

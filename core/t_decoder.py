@@ -133,7 +133,7 @@ class DecoderThread(BaseThread):
                 frame: NnFrame = NnFrame(
                     f_no=f_no,
                     tensor=d_tensor.clone(),
-                    last=bool(remaining == 0)
+                    last=bool(remaining == 1)
                 )
                 if self.verbose:
                     print(

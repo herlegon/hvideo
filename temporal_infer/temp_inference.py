@@ -175,12 +175,18 @@ def perform_temporal_inference(
                             interpolation_method="bilinear"
                         )
 
+                print(purple(f"received frame no.{frame.f_no}"), "last" if frame.last else "")
+
+            else:
+                print(red("emptying"))
+
             # Append fram to cache
             cache.append(frame=frame)
 
             # Do not process if cache is not ready
             if not cache.is_ready():
-                d_thread.release()
+                print("  ask for frame")
+                d_thread.set_produce_flag()
                 continue
 
             # Cache is ready, perform inference
@@ -188,17 +194,22 @@ def perform_temporal_inference(
             if window is None:
                 raise ValueError("Not enough frames in window, why?")
 
-            # out_tensor = inference(window)
-            out_tensor: Tensor = torch.empty_like(NnFrame.tensor)
+            # inference
+            out_tensor = window[2].clone()
 
             # get frame to output
             out_frame = cache.current_frame()
             out_frame.tensor = out_tensor
 
-            e_thread.put(out_frame)
+            e_thread.put_frame(out_frame)
+            print(yellow(f"output:"), out_frame.f_no)
 
             if cache.is_empty():
                 break
+
+            if not cache.emptying():
+                d_thread.set_produce_flag()
+
 
     # Send a poison pill
     e_thread.put(None)
