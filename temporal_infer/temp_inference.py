@@ -195,7 +195,14 @@ def perform_temporal_inference(
                 raise ValueError("Not enough frames in window, why?")
 
             # inference
-            out_tensor = window[2].clone()
+            out_tensor = (
+                window[0] * 0.5
+                + window[1] * 0.75
+                + window[2]
+                + window[3] * 0.75
+                + window[4] * 0.5
+            ) / 3.5
+            out_tensor = torch.clamp(out_tensor, 0., 1.)
 
             # get frame to output
             out_frame = cache.current_frame()

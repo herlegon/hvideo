@@ -28,7 +28,7 @@ def gpu_resize_(
         align_corners=False,
         antialias=bool(interpolation_method in ('bilinear', 'bicubic'))
     )
-    frame.tensor = torch.clamp_(out_x.contiguous(), 0, 1.0)
+    frame.tensor = torch.clamp(out_x.contiguous(), 0, 1.0)
 
     return frame
 
