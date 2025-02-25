@@ -18,6 +18,7 @@ str_to_video_codec: dict[str, VideoCodec] = {
     'vp9': VideoCodec.VP9,
     'dnxhd': VideoCodec.DNXHD,
     "hevc_nvenc": VideoCodec.HEVC_NVENC,
+    "hevc": VideoCodec.HEVC_NVENC,
 }
 
 

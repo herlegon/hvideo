@@ -263,13 +263,14 @@ def main():
     # Not filters if TRT inference before
     f_thread = None
     if not arguments.model:
+        i_dtype = 'fp32'
         f_thread = CudaTemporalInferenceThread(
             name="temporal_inference", debug=arguments.debug
         )
         f_thread.initialize(
             model=None,
             device="cuda:0",
-            dtype='fp16',
+            dtype=i_dtype,
             prescale=pre_resize_shape
         )
         e_thread.set_producer(f_thread)

@@ -3,16 +3,21 @@ from enum import IntEnum
 from pprint import pprint
 from queue import Queue
 import time
-from typing import Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING
+import numpy as np
 import torch
 from torch import Tensor
-
+import torch.nn.functional as F
 from gpu_filters.gpu_resize import gpu_resize_, gpu_resize_to_
-from media.images_io import write_tensor
+from media.images_io import write_image, write_tensor
+from .utils import flow_to_image
 from utils.p_print import *
 from pynnlib import (
     PyTorchModel,
     Idtype,
+    nnlib,
+    PyTorchSession,
+    tensor_to_img,
 )
 
 if TYPE_CHECKING:
@@ -128,7 +133,19 @@ def initialize_temporal_inference(
     self.model = model
     self.cache = TemporalFrameCache()
     self.infer_stream = torch.cuda.Stream(device)
-
+    model_filepath: str = "A:\\ml_models\\unimatch\\gmflow-scale1-things-e9887eda.pth"
+    of_model: PyTorchModel = nnlib.open(model_filepath, device="cuda:0")
+    # print(f"Model: {model_filepath}")
+    # print(of_model)
+    of_session: PyTorchSession = nnlib.session(of_model)
+    of_session.infer_stream = torch.cuda.Stream(device)
+    of_session.initialize(
+        device=device,
+        dtype=dtype,
+        warmup=False,
+    )
+    self.of_session = of_session
+    self.model = of_model
 
 
 @torch.inference_mode()
@@ -146,6 +163,7 @@ def perform_temporal_inference(
     d_thread: DecoderThread = self.producer
     e_thread: EncoderThread = self.consumer
 
+    of_session: PyTorchSession = self.of_session
     cuda_stream = self.infer_stream
 
     with torch.cuda.stream(cuda_stream):
@@ -178,7 +196,21 @@ def perform_temporal_inference(
                             interpolation_method="bilinear"
                         )
 
-                print(purple(f"received frame no.{frame.f_no}"), "last" if frame.last else "")
+                # resize it before for optical flow
+                in_x = frame.tensor
+                out_shape = in_x.shape[2:]
+                if False:
+                    out_x: Tensor = F.interpolate(
+                        input=in_x.to(dtype=torch.float16),
+                        size=(480,640),
+                        mode='bilinear',
+                        align_corners=False,
+                        antialias=True
+                    )
+                    out_x = torch.clamp_(out_x.contiguous(), 0, 1.0)
+                    frame.tensor = out_x.to(dtype=of_session.dtype)
+
+                # print(purple(f"received frame no.{frame.f_no}"), "last" if frame.last else "")
 
             else:
                 print(red("emptying"))
@@ -198,27 +230,62 @@ def perform_temporal_inference(
                 raise ValueError("Not enough frames in window, why?")
 
             # inference
-            out_tensor = (
-                window[0] * 0.5
-                + window[1] * 0.75
-                + window[2]
-                + window[3] * 0.75
-                + window[4] * 0.5
-            ) / 3.5
-            out_tensor = torch.clamp_(out_tensor, 0., 1.)
+            #-----------------------------------------------------------------------------
+            # out_tensor = (
+            #     window[0] * 0.5
+            #     + window[1] * 0.75
+            #     + window[2]
+            #     + window[3] * 0.75
+            #     + window[4] * 0.5
+            # ) / 3.5
 
-            time.sleep(0.0001)
-            cuda_stream.synchronize()
+            # model: parameter-free
+            # '--attn_type', default='swin', type=str 'attention function')
+            # '--attn_splits_list', default=[2], type=int, nargs='+' 'number of splits in attention')
+            # '--corr_radius_list', default=[-1], type=int, nargs='+' 'correlation radius for matching, -1 indicates global matching')
+            # '--prop_radius_list', default=[-1], type=int, nargs='+' 'self-attention radius for propagation, -1 indicates global attention')
+            # '--num_reg_refine', default=1, type=int, help='number of additional local regression refinement')
+            flow_pred = self.model.module(
+                img0=window[2],
+                img1=window[3],
+                attn_type='swin',
+                attn_splits_list=[2],
+                corr_radius_list=[-1],  # Full correlation
+                prop_radius_list=[-1],  # Full propagation
+                pred_bidir_flow=False,
+                task='flow',
+            )
+            # Get predicted flow
+            flow = flow_pred['flow_preds'][-1]
+            flow_np = flow[0].cpu().numpy().transpose(1, 2, 0)
+            img = flow_to_image(flow_np)
+
+
+
+
+            #-----------------------------------------------------------------------------
+            # out_tensor = torch.clamp_(out_tensor, 0., 1.)
+            out_tensor = window[2]
+
 
             # get frame to output
             out_frame = cache.current_frame()
             out_frame.tensor = out_tensor
+            gpu_resize_to_(out_frame, out_shape)
+
+            time.sleep(0.0001)
+            cuda_stream.synchronize()
+
+
+            # write flow
+            write_image(f"flow_{out_frame.f_no:02}.png", img)
+
 
             # Write (debug)
-            write_tensor(f"frame_{out_frame.f_no:02}.png", d_tensor=out_tensor)
+            # write_tensor(f"frame_{out_frame.f_no:02}.png", d_tensor=out_tensor)
 
             e_thread.put_frame(out_frame)
-            print(yellow(f"output:"), out_frame.f_no)
+            # print(yellow(f"output:"), out_frame.f_no)
 
             if cache.is_empty():
                 break
