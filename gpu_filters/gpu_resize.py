@@ -12,7 +12,7 @@ def gpu_resize_(
     frame: NnFrame,
     scale_factor: Optional[float | int | list[float]] = None,
     out_size: Optional[list[int, int]] = None,
-    interpolation_method: str = "bilinear",
+    interpolation_method: str = "bicubic",
 ) -> NnFrame:
     in_x: Tensor = frame.tensor
     if isinstance(scale_factor, float):
@@ -36,7 +36,12 @@ def gpu_resize_(
 
 def gpu_resize_to_(
     frame: NnFrame,
-    out_size: Optional[list[int, int]] = None,
-    interpolation_method: str = "bilinear",
+    params: str,
+    interpolation_method: str = "bicubic",
 ) -> NnFrame:
-    return gpu_resize_(frame, out_size=out_size)
+    w, h = map(int, params.split(":")[:2])
+    return gpu_resize_(
+        frame,
+        out_size=(h, w),
+        interpolation_method=interpolation_method
+    )

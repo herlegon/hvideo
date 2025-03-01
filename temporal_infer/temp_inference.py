@@ -187,13 +187,13 @@ def perform_temporal_inference(
                         gpu_resize_to_(
                             frame=frame,
                             out_size=self.prescale,
-                            interpolation_method="bilinear"
+                            interpolation_method="bicubic"
                         )
                     else:
                         gpu_resize_(
                             frame=frame,
                             scale_factor=self.prescale,
-                            interpolation_method="bilinear"
+                            interpolation_method="bicubic"
                         )
 
                 # resize it before for optical flow
