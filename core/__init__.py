@@ -8,6 +8,7 @@ from .t_trt_inference import InferenceThread
 
 from .t_cuda_inference import CudaInferenceThread
 from .t_cuda_temp_inference import CudaTemporalInferenceThread
+from .t_cuda_seg_inference import CudaSegInferenceThread
 
 from .t_img_reader import ImgReaderThread
 from .t_img_writer import ImgWriterThread
@@ -24,6 +25,7 @@ __all__ = [
     "InferenceThread",
     "CudaInferenceThread",
     "CudaTemporalInferenceThread",
+    "CudaSegInferenceThread",
 
     "ImgReaderThread",
     "ImgWriterThread",

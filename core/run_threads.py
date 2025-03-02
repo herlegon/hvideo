@@ -13,15 +13,14 @@ def run_threads(
     e_thread: EncoderThread,
     progress_thread: ProgressThread | None = None,
     total_frames: int = 0,
-    debug: bool = False
+    verbose: bool = False
 ) -> float:
-
     # Start all threads
     if not isinstance(i_threads, list | tuple):
         i_threads = [i_threads]
 
-    d_thread.verbose = debug
-    e_thread.verbose = debug
+    d_thread.verbose = verbose
+    e_thread.verbose = verbose
 
     start_time = time.time()
 
@@ -43,8 +42,8 @@ def run_threads(
         if not decoding:
             # All frames encoded, send poison pill to all inference threads
             if e_thread.encoded == total_frames and ask_to_end:
-                if debug:
-                    print("[V][C] All frames encoded, send poison pill to encoder")
+                if verbose:
+                    print(f"[V][C] All frames encoded {e_thread.encoded}/{total_frames}, send poison pill to encoder")
                 e_thread.put_frame(None)
                 ask_to_end = False
 
@@ -53,7 +52,7 @@ def run_threads(
                 not d_thread.is_alive()
                 and not e_thread.is_alive()
             ):
-                if debug:
+                if verbose:
                     print("[V][C] All frames encoded, encoder has ended")
                 encoded = e_thread.encoded
                 break
@@ -63,7 +62,7 @@ def run_threads(
         time.sleep(0.0001)
         # Detect end of decoding
         if not d_thread.is_alive() and decoding:
-            if debug:
+            if verbose:
                 print("[V][C] decoder has ended")
             err, message = d_thread.error_encountered()
             if err:
@@ -72,7 +71,7 @@ def run_threads(
             else:
                 decoding = False
                 ask_to_end = True
-                if debug:
+                if verbose:
                     print(f"[V][C] wait for {total_frames} to be encoded")
 
         time.sleep(0.0001)
@@ -85,6 +84,7 @@ def run_threads(
 
     elapsed = time.time() - start_time
     progress_thread.put(0, force=True)
+    time.sleep(0.0001)
 
     # Stop remaining threads if not already stopped (error cases)
     for thread in i_threads:

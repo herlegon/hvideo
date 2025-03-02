@@ -120,7 +120,9 @@ class EncoderThread(BaseThread):
                 try:
                     self.sub_process.stdin.write(out_img)
                 except:
-                    pprint(self.sub_process.stderr.read())
+                    print(f"failed send {type(out_img)}")
+                    stdout = self.sub_process.stdout.read().decode("utf-8")
+                    pprint(stdout.split('\n'))
                     break
 
                 remaining -= 1

@@ -174,3 +174,5 @@ external/ffmpeg/*
 *.png
 *.jpg
 *.bat
+*.mp4
+*.mxf

@@ -36,12 +36,12 @@ def gpu_resize_(
 
 def gpu_resize_to_(
     frame: NnFrame,
-    params: str,
+    out_size: tuple[int, int],
     interpolation_method: str = "bicubic",
 ) -> NnFrame:
-    w, h = map(int, params.split(":")[:2])
+    """outsize: (h, w)"""
     return gpu_resize_(
         frame,
-        out_size=(h, w),
+        out_size=out_size,
         interpolation_method=interpolation_method
     )
