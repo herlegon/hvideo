@@ -15,6 +15,7 @@ from core import (
     ProgressThread,
     run_threads,
     CudaTemporalInferenceThread,
+    CudaSegInferenceThread,
 )
 
 from core.t_trt_inference import InferenceThread
@@ -258,23 +259,25 @@ def main():
     )
 
 
-    # Filters
+    # Segmentation
     #-------------------------------------------------------------------------
-    # Not filters if TRT inference before
-    f_thread = None
+    s_thread = None
     if not arguments.model:
-        i_dtype = 'fp32'
-        f_thread = CudaTemporalInferenceThread(
-            name="temporal_inference", debug=arguments.debug
+        i_dtype = 'fp16'
+        s_thread = CudaSegInferenceThread(
+            name="segmentation",
+            debug=arguments.debug,
         )
-        f_thread.initialize(
+        s_thread.initialize(
+            video_info=f_vi,
             model=None,
             device="cuda:0",
             dtype=i_dtype,
-            prescale=pre_resize_shape
+            prescale=pre_resize_shape,
         )
-        e_thread.set_producer(f_thread)
-        f_thread.set_consumer(e_thread)
+
+        e_thread.set_producer(s_thread)
+        s_thread.set_consumer(e_thread)
 
 
     # Tensor inference thread
@@ -317,9 +320,9 @@ def main():
         d_thread.set_consumer(i_thread)
         i_thread.set_producer(d_thread)
 
-    elif f_thread is not None:
-        d_thread.set_consumer(f_thread)
-        f_thread.set_producer(d_thread)
+    elif s_thread is not None:
+        d_thread.set_consumer(s_thread)
+        s_thread.set_producer(d_thread)
 
 
     # Progress bar
@@ -334,8 +337,10 @@ def main():
     elapsed = run_threads(
         d_thread=d_thread,
         e_thread=e_thread,
-        i_threads=(i_thread, f_thread),
-        progress_thread=progress_thread
+        i_threads=(i_thread, s_thread),
+        progress_thread=progress_thread,
+        total_frames=out_vi['frame_count'],
+        verbose=arguments.debug
     )
 
     print(f"elapsed: {elapsed:.02f}s ({total_frames/elapsed:.02f}fps)")

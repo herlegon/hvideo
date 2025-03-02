@@ -3,6 +3,7 @@ from __future__ import annotations
 from argparse import Namespace
 from dataclasses import dataclass
 import math
+import os
 from pprint import pprint
 import re
 import subprocess
@@ -11,7 +12,7 @@ import sys
 import numpy as np
 
 from utils.p_print import lightgreen, red
-from utils.path_utils import get_extension
+from utils.path_utils import get_extension, path_split
 from utils.tools import ffmpeg_exe
 from .codecs import (
     vcodec_to_extension,
@@ -155,8 +156,8 @@ def args_to_encoder_settings(
 
     # Set the output extension depending on the codec
     out_fp: str = vi['filepath']
-    if get_extension(out_fp) == '.$$$':
-        out_fp = out_fp.replace('.$$$', vcodec_to_extension[vcodec])
+    if not args.output:
+        out_fp = os.path.join(*path_split(out_fp)[:2]) + vcodec_to_extension[vcodec]
     params.filepath = out_fp
 
     # Modify the encoder settings used by the encoder node
@@ -376,7 +377,7 @@ def encoder_subprocess(
 
     if debug:
         print(lightgreen(f"[V][E] FFmpeg command:"), ' '.join(e_command))
-        # pprint(e_command)
+        pprint(e_command)
 
     # Open subprocess
     sub_process: subprocess.Popen
