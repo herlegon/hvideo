@@ -166,45 +166,36 @@ def stats_color_transfer(source: Tensor, target: Tensor) -> torch.Tensor:
         'Color Transfer between Images', IEEE CG&A special issue on Applied
         Perception, Vol 21, No 5, pp 34-41, September - October 2001
     """
-    device = source.device
+    x_device = source.device
+    x_dtype = source.dtype
+    dtype = torch.float16
 
     # Store original shape
     original_shape = source.shape
 
     # Reshape images to 2D matrices
-    img_s = source.reshape(-1, 3)
-    img_t = target.reshape(-1, 3)
+    img_s = source.reshape(-1, 3).to(dtype=dtype)
+    img_t = target.reshape(-1, 3).to(dtype=dtype)
 
     # Define transformation matrices
     a = torch.tensor([
         [0.3811, 0.5783, 0.0402],
         [0.1967, 0.7244, 0.0782],
         [0.0241, 0.1288, 0.8444]
-    ], device=device)
+    ], device=x_device, dtype=dtype)
 
     b = torch.tensor([
         [1/torch.sqrt(torch.tensor(3.0)), 0, 0],
         [0, 1/torch.sqrt(torch.tensor(6.0)), 0],
         [0, 0, 1/torch.sqrt(torch.tensor(2.0))]
-    ], device=device)
+    ], device=x_device, dtype=dtype)
 
     c = torch.tensor([
         [1, 1, 1],
         [1, 1, -2],
         [1, -1, 0]
-    ], device=device)
+    ], device=x_device, dtype=dtype)
 
-    b2 = torch.tensor([
-        [torch.sqrt(torch.tensor(3.0))/3, 0, 0],
-        [0, torch.sqrt(torch.tensor(6.0))/6, 0],
-        [0, 0, torch.sqrt(torch.tensor(2.0))/2]
-    ], device=device)
-
-    c2 = torch.tensor([
-        [1, 1, 1],
-        [1, 1, -1],
-        [1, -2, 0]
-    ], device=device)
 
     # Clamp small values to avoid log(0)
     img_s = torch.clamp(img_s, min=1e-8)
@@ -233,6 +224,18 @@ def stats_color_transfer(source: Tensor, target: Tensor) -> torch.Tensor:
     res_lab = (lab_s - mean_s) * sf + mean_t
 
     # Convert back to LMS
+    b2 = torch.tensor([
+        [torch.sqrt(torch.tensor(3.0))/3, 0, 0],
+        [0, torch.sqrt(torch.tensor(6.0))/6, 0],
+        [0, 0, torch.sqrt(torch.tensor(2.0))/2]
+    ], device=x_device, dtype=dtype)
+
+    c2 = torch.tensor([
+        [1, 1, 1],
+        [1, 1, -1],
+        [1, -2, 0]
+    ], device=x_device, dtype=dtype)
+
     LMS_res = torch.matmul(c2, torch.matmul(b2, res_lab))
     LMS_res = torch.pow(10, LMS_res)
 
@@ -241,11 +244,11 @@ def stats_color_transfer(source: Tensor, target: Tensor) -> torch.Tensor:
         [4.4679, -3.5873, 0.1193],
         [-1.2186, 2.3809, -0.1624],
         [0.0497, -0.2439, 1.2045]
-    ], device=device)
+    ], device=x_device, dtype=dtype)
 
     est_im = torch.matmul(rgb_to_lms_inverse, LMS_res).t()
 
     # Reshape the image to original dimensions
-    est_im = est_im.reshape(original_shape)
+    est_im = est_im.reshape(original_shape).to(dtype=x_dtype)
 
     return est_im
