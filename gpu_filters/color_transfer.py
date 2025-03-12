@@ -252,3 +252,141 @@ def stats_color_transfer(source: Tensor, target: Tensor) -> torch.Tensor:
     est_im = est_im.reshape(original_shape).to(dtype=x_dtype)
 
     return est_im
+
+
+
+import torch
+
+def pca_color_transfer_abadpour(source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """
+    Implements Arash Abadpour's PCA-based color transfer method
+
+    Args:
+        source: Source image tensor with shape (H, W, 3) or (B, H, W, 3), values in range [0, 1]
+        target: Target image tensor with shape (H, W, 3) or (B, H, W, 3), values in range [0, 1]
+
+    Returns:
+        Color-transferred source image tensor with same shape as source
+
+    References:
+        Abadpour, A., & Kasaei, S. (2007). An efficient PCA-based color transfer method.
+        Journal of Visual Communication and Image Representation, 18(1), 15-34.
+    """
+    device = source.device
+
+    # Store original shape
+    original_shape = source.shape
+
+    # Reshape images to 2D matrices (pixels × channels)
+    img_s = source.reshape(-1, 3)
+    img_t = target.reshape(-1, 3)
+
+    # Step 1: Calculate mean vectors
+    mu_s = torch.mean(img_s, dim=0)
+    mu_t = torch.mean(img_t, dim=0)
+
+    # Step 2: Center the data
+    s_centered = img_s - mu_s
+    t_centered = img_t - mu_t
+
+    # Step 3: Calculate covariance matrices
+    cov_s = torch.matmul(s_centered.t(), s_centered) / (s_centered.shape[0] - 1)
+    cov_t = torch.matmul(t_centered.t(), t_centered) / (t_centered.shape[0] - 1)
+
+    # Step 4: Perform eigendecomposition on source covariance
+    eigval_s, eigvec_s = torch.linalg.eigh(cov_s)
+    # Sort eigenvalues and eigenvectors in descending order
+    indices_s = torch.argsort(eigval_s, descending=True)
+    eigval_s = eigval_s[indices_s]
+    eigvec_s = eigvec_s[:, indices_s]
+
+    # Step 5: Perform eigendecomposition on target covariance
+    eigval_t, eigvec_t = torch.linalg.eigh(cov_t)
+    # Sort eigenvalues and eigenvectors in descending order
+    indices_t = torch.argsort(eigval_t, descending=True)
+    eigval_t = eigval_t[indices_t]
+    eigvec_t = eigvec_t[:, indices_t]
+
+    # Step 6: Construct the rotation matrix
+    # Ensure eigenvalues are positive
+    eigval_s = torch.clamp(eigval_s, min=1e-10)
+    eigval_t = torch.clamp(eigval_t, min=1e-10)
+
+    # Create scaling matrix from eigenvalues
+    scaling = torch.diag(torch.sqrt(eigval_t / eigval_s))
+
+    # Rotation matrix from source PCA space to target PCA space
+    rotation = torch.matmul(eigvec_t, torch.matmul(scaling, eigvec_s.t()))
+
+    # Step 7: Apply the transformation
+    # Project source pixels to PCA space, apply transformation, and project back
+    transformed = torch.matmul(s_centered, rotation.t()) + mu_t
+
+    # Clamp values to valid range [0, 1]
+    transformed = torch.clamp(transformed, 0, 1)
+
+    # Reshape back to original dimensions
+    result = transformed.reshape(original_shape)
+
+    return result
+
+
+def pca_color_transfer_abadpour_simplified(source: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """
+    A simplified version of Abadpour's PCA-based color transfer method
+    that operates directly in RGB space
+
+    Args:
+        source: Source image tensor with shape (H, W, 3) or (B, H, W, 3), values in range [0, 1]
+        target: Target image tensor with shape (H, W, 3) or (B, H, W, 3), values in range [0, 1]
+
+    Returns:
+        Color-transferred source image tensor with same shape as source
+    """
+    device = source.device
+
+    # Store original shape
+    original_shape = source.shape
+
+    # Reshape images to 2D matrices (pixels × channels)
+    img_s = source.reshape(-1, 3)
+    img_t = target.reshape(-1, 3)
+
+    # Calculate mean and covariance
+    mu_s = torch.mean(img_s, dim=0)
+    mu_t = torch.mean(img_t, dim=0)
+
+    # Center the data
+    s_centered = img_s - mu_s
+    t_centered = img_t - mu_t
+
+    # Calculate covariances
+    cov_s = torch.matmul(s_centered.t(), s_centered) / (s_centered.shape[0] - 1)
+    cov_t = torch.matmul(t_centered.t(), t_centered) / (t_centered.shape[0] - 1)
+
+    # Calculate the transformation matrix using Cholesky decomposition for stability
+    # Handle potential numerical issues with covariance matrices
+    try:
+        cov_s_sqrt = torch.linalg.cholesky(cov_s)
+        cov_s_sqrt_inv = torch.linalg.inv(cov_s_sqrt)
+        cov_t_sqrt = torch.linalg.cholesky(cov_t)
+    except:
+        # Fallback for numerical instability: add small regularization
+        eps = 1e-6 * torch.eye(3, device=device)
+        cov_s_sqrt = torch.linalg.cholesky(cov_s + eps)
+        cov_s_sqrt_inv = torch.linalg.inv(cov_s_sqrt)
+        cov_t_sqrt = torch.linalg.cholesky(cov_t + eps)
+
+    # Transformation matrix A
+    A = torch.matmul(cov_t_sqrt, cov_s_sqrt_inv)
+
+    # Apply transformation: y = A(x - μs) + μt
+    transformed = torch.matmul(s_centered, A.t()) + mu_t
+
+    # Clamp values to valid range [0, 1]
+    transformed = torch.clamp(transformed, 0, 1)
+
+    # Reshape back to original dimensions
+    result = transformed.reshape(original_shape)
+
+    return result
