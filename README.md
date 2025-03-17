@@ -9,7 +9,7 @@
 - pynnlib as a submodule
     ```
     git submodule init
-    git submodule add -b 2025_01 https://github.com/herlegon/pynnlib.git
+    git submodule add https://github.com/JepEtau/pynnlib.git
     ```
 
 # Usage

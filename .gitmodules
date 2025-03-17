@@ -1,4 +1,3 @@
 [submodule "pynnlib"]
 	path = pynnlib
-	url = https://github.com/herlegon/pynnlib.git
-	branch = 2025_01
+	url = https://github.com/JepEtau/pynnlib.git

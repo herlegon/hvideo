@@ -7,4 +7,4 @@ requests
 rich
 safetensors
 setuptools
-tensorrt==10.7.0
+tensorrt
