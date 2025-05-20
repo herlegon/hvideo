@@ -71,12 +71,19 @@ class DecoderThread(BaseThread):
             raise ValueError(red("[E] No consumer defined for the decoder."))
 
         # Create a cuda stream and allocate Host memory
-        cuda_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
-        host_mem: Tensor = torch.empty(
-            self.vpi.nbytes,
-            dtype=torch.uint8,
-            pin_memory=True
-        )
+        cuda = self.is_cuda_workflow
+        if cuda:
+            cuda_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
+            stream_context = torch.cuda.stream(cuda_stream)
+            host_mem: Tensor = torch.empty(
+                self.vpi.nbytes,
+                dtype=torch.uint8,
+                pin_memory=True
+            )
+
+        else:
+            from contextlib import nullcontext
+            stream_context = nullcontext()
 
         # Input stream
         img_shape: FShape = self.vpi.shape
@@ -92,7 +99,7 @@ class DecoderThread(BaseThread):
         f_no: int = self.vpi.f_no
         f_index: int = 0
 
-        with torch.cuda.stream(cuda_stream):
+        with stream_context:
             while (
                 not self._stop_event.is_set()
                 and remaining > 0
@@ -113,14 +120,18 @@ class DecoderThread(BaseThread):
                     self.release()
                     break
 
-                # HtoD transfer
-                d_img: Tensor = htod_transfer(
-                    host_mem=host_mem,
-                    img_buffer=img_buffer,
-                    img_dtype=img_dtype,
-                    img_shape=img_shape,
-                    cuda_stream=cuda_stream
-                )
+                d_img: Tensor
+                if cuda:
+                    # HtoD transfer
+                    d_img = htod_transfer(
+                        host_mem=host_mem,
+                        img_buffer=img_buffer,
+                        img_dtype=img_dtype,
+                        img_shape=img_shape,
+                        cuda_stream=cuda_stream
+                    )
+                else:
+                    d_img = img_buffer.view(dtype=img_dtype).view(img_shape)                    
 
                 # Image to 4D tensor
                 d_tensor: Tensor = img_to_tensor(

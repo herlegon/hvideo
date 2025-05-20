@@ -43,6 +43,7 @@ class BaseThread(abc.ABC, Thread):
         self.consumer: Type[BaseThread] | None = None
         self.progress_thread: ProgressThread | None  = None
         self._processing: bool = True
+        self._is_cuda_workflow: bool = False
 
 
     @property
@@ -95,3 +96,13 @@ class BaseThread(abc.ABC, Thread):
 
     def processing(self) -> bool:
         return self._processing
+
+
+    @property
+    def is_cuda_workflow(self) -> bool:
+        return self._is_cuda_workflow
+
+
+    @is_cuda_workflow.setter
+    def is_cuda_workflow(self, enabled: bool) -> None:
+        self.is_cuda_workflow = enabled and torch.cuda.is_available()
