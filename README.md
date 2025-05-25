@@ -2,15 +2,10 @@
 
 
 # Installation
-- `git clone https://github.com/JepEtau/pytc.git`
+- `git clone --recurse-submodules https://github.com/JepEtau/pytc.git`
 - download and extract (FFmpeg and FFprobe)[https://ffmpeg.org/download.html#build-windows] to `external/ffmpeg` folder
 - install (PyTorch)[https://pytorch.org/]
 - `pip install -r requirements`
-- pynnlib as a submodule
-    ```
-    git submodule init
-    git submodule add https://github.com/JepEtau/pynnlib.git
-    ```
 
 # Usage
 `python.exe .\pytc.py --help`

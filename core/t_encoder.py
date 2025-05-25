@@ -59,12 +59,19 @@ class EncoderThread(BaseThread):
         img_dtype: np.dtype = self.vpi.dtype
 
         # Create a cuda stream and allocate Host memory
-        cuda_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
-        host_mem: Tensor = torch.empty(
-            img_shape,
-            dtype=np_dtype_to_torch.get(img_dtype, img_dtype),
-            pin_memory=True
-        )
+        cuda = self.is_cuda_workflow
+        if cuda:
+            cuda_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
+            host_mem: Tensor = torch.empty(
+                img_shape,
+                dtype=np_dtype_to_torch.get(img_dtype, img_dtype),
+                pin_memory=True
+            )
+
+        else:
+            from contextlib import nullcontext
+            stream_context = nullcontext()
+
 
         # Tensor to image
         flip_r_b: bool = bool(self.vpi.c_order != 'rgb')
@@ -74,7 +81,7 @@ class EncoderThread(BaseThread):
         received: int = 0
         remaining: int = self.vpi.nframes
 
-        with torch.cuda.stream(cuda_stream):
+        with stream_context:
             while (
                 not self._stop_event.is_set()
                 and remaining > 0
@@ -105,11 +112,16 @@ class EncoderThread(BaseThread):
                     flip_r_b=flip_r_b,
                 )
 
-                out_img: np.ndarray = dtoh_transfer(
-                    host_mem=host_mem,
-                    d_img=d_img,
-                    cuda_stream=cuda_stream,
-                )
+                out_img: np.ndarray
+                if cuda:
+                    out_img = dtoh_transfer(
+                        host_mem=host_mem,
+                        d_img=d_img,
+                        cuda_stream=cuda_stream,
+                    )
+
+                else:
+                    out_img = d_img.contiguous().numpy()
 
                 if verbose:
                     print(
