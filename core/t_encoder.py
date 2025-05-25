@@ -5,6 +5,7 @@ import subprocess
 from threading import Event
 import torch
 from torch import Tensor
+from torch.cuda import StreamContext
 
 from pynnlib import tensor_to_img, np_dtype_to_torch
 from core.dh_transfers import dtoh_transfer
@@ -62,6 +63,7 @@ class EncoderThread(BaseThread):
         cuda = self.is_cuda_workflow
         if cuda:
             cuda_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
+            stream_context: StreamContext = torch.cuda.stream(cuda_stream)
             host_mem: Tensor = torch.empty(
                 img_shape,
                 dtype=np_dtype_to_torch.get(img_dtype, img_dtype),
@@ -70,7 +72,7 @@ class EncoderThread(BaseThread):
 
         else:
             from contextlib import nullcontext
-            stream_context = nullcontext()
+            cuda_stream = nullcontext()
 
 
         # Tensor to image
@@ -117,7 +119,7 @@ class EncoderThread(BaseThread):
                     out_img = dtoh_transfer(
                         host_mem=host_mem,
                         d_img=d_img,
-                        cuda_stream=cuda_stream,
+                        cuda_stream=cuda_stream
                     )
 
                 else:

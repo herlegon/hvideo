@@ -46,3 +46,31 @@
 - arguments: `utils/arg_parse.py`
 - H265/HVEC_NVEC encoder options: `pytc.py`
 
+
+# Torch to TensorRT engine
+
+## Conversion
+```
+cd pynnlib
+python -m scripts.convert_model -trt -m A:\ml_models\2x_Pooh_DAT-2_Candidate_1_305k.pth -opt 640x480 -fixed -bf16 -f
+```
+
+Note:
+- `-f`: force and overwrite previous engine if exists
+- The conversion is really slow, it seems that it's stuck after having printed `[I] [TRT] Compiler backend is used during engine build.` but it's not.
+- One of the latest printed line is `[I] TensorRT engine saved as A:\ml_models\2x_Pooh_DAT-2_Candidate_1_305k_cc8.9_op20_fp32_bf16_640x480_640x480_640x480_10.9.0.34.engine`
+
+
+## Test
+```
+python -m scripts.img_infer -m A:\ml_models\2x_Pooh_DAT-2_Candidate_1_305k_cc8.9_op20_fp32_bf16_640x480_640x480_640x480_10.9.0.34.engine -i A:\imgs\img_640x480.png
+```
+
+
+## Video inference
+```
+python .\pytc.py -i .\ep01_episode_008_j_lr.mxf -resize_to 640x480 -m A:\ml_models\2x_Pooh_DAT-2_Candidate_1_305k_cc8.9_op20_fp32_bf16_640x480_640x480_640x480_10.9.0.34.engine -bf16
+```
+
+Note:
+- `-resize_to 640x480` is used to resize the video before running the inference

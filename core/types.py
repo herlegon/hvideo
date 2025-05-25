@@ -105,4 +105,4 @@ class BaseThread(abc.ABC, Thread):
 
     @is_cuda_workflow.setter
     def is_cuda_workflow(self, enabled: bool) -> None:
-        self.is_cuda_workflow = enabled and torch.cuda.is_available()
+        self._is_cuda_workflow = enabled and torch.cuda.is_available()

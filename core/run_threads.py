@@ -22,6 +22,12 @@ def run_threads(
     d_thread.verbose = verbose
     e_thread.verbose = verbose
 
+    # Indicates to the decoder/encoder that it's a full GPU workflow
+    #   bc modified API for future use (ncnn)
+    #   use a null context if cpu
+    d_thread.is_cuda_workflow = True
+    e_thread.is_cuda_workflow = True
+
     start_time = time.time()
 
     d_thread.set_produce_flag()

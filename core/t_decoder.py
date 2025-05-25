@@ -6,6 +6,7 @@ import subprocess
 from threading import Event, Lock
 import torch
 from torch import Tensor
+from torch.cuda import StreamContext
 
 from media import FShape
 from media.decoder import decoder_subprocess
@@ -74,7 +75,7 @@ class DecoderThread(BaseThread):
         cuda = self.is_cuda_workflow
         if cuda:
             cuda_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
-            stream_context = torch.cuda.stream(cuda_stream)
+            stream_context: StreamContext = torch.cuda.stream(cuda_stream)
             host_mem: Tensor = torch.empty(
                 self.vpi.nbytes,
                 dtype=torch.uint8,
@@ -131,7 +132,7 @@ class DecoderThread(BaseThread):
                         cuda_stream=cuda_stream
                     )
                 else:
-                    d_img = img_buffer.view(dtype=img_dtype).view(img_shape)                    
+                    d_img = img_buffer.view(dtype=img_dtype).view(img_shape)
 
                 # Image to 4D tensor
                 d_tensor: Tensor = img_to_tensor(
