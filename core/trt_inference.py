@@ -78,7 +78,8 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
                         scale_factor=self.prescale,
                         interpolation_method="bicubic"
                     )
-
+                time.sleep(0.0001)
+                cuda_stream.synchronize()
 
             # Input tensor
             in_tensor = frame.tensor

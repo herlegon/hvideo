@@ -24,13 +24,15 @@ if TYPE_CHECKING:
     from core.t_decoder import DecoderThread
     from core.t_encoder import EncoderThread
 
-from pynnlib.nn_pytorch.archs.EfficientTAM.efficient_track_anything.build_efficienttam import (
-    build_efficienttam_video_predictor,
-)
-from pynnlib.nn_pytorch.archs.EfficientTAM.efficient_track_anything.efficienttam_video_predictor import (
-    EfficientTAMVideoPredictor,
-)
-
+try:
+    from pynnlib.nn_pytorch.archs.EfficientTAM.efficient_track_anything.build_efficienttam import (
+        build_efficienttam_video_predictor,
+    )
+    from pynnlib.nn_pytorch.archs.EfficientTAM.efficient_track_anything.efficienttam_video_predictor import (
+        EfficientTAMVideoPredictor,
+    )
+except:
+    pass
 
 TORCH_LOGS="+dynamo"
 TORCHDYNAMO_VERBOSE=1
