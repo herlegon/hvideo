@@ -87,7 +87,7 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
             in_tensor = in_tensor.to(dtype=session_dtype)
             in_tensor = torch.ravel(in_tensor)
             if verbose:
-                print(blue(f"{verbose_prefix} in tensor dtype:{in_tensor.dtype}"))
+                print(blue(f"{verbose_prefix} in tensor dtype:{in_tensor.dtype}, {in_tensor.data_ptr()}"))
 
             # Prepare output tensor in same device
             out_tensor_shape = (n, c, in_h * scale, in_w * scale)
@@ -99,6 +99,9 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
 
             # Perform simple inference
             bindings = [in_tensor.data_ptr(), out_tensor.data_ptr()]
+            if verbose:
+                print(blue(f"{verbose_prefix} bindings: {bindings}, session dtype: {session_dtype}"))
+
             for i in range(engine.num_io_tensors):
                 context.set_tensor_address(engine.get_tensor_name(i), bindings[i])
             context.execute_async_v3(stream_handle=cuda_stream.cuda_stream)
@@ -109,7 +112,7 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
             cuda_stream.synchronize()
 
             e_thread.put_frame(frame)
-            d_thread.set_produce_flag()
+            # d_thread.set_produce_flag()
 
     if verbose:
         print(cyan(f"[V][I][TRT] Ended"))

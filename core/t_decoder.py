@@ -136,9 +136,7 @@ class DecoderThread(BaseThread):
 
                 # Image to 4D tensor
                 d_tensor: Tensor = img_to_tensor(
-                    d_img=d_img,
-                    tensor_dtype=tensor_dtype,
-                    flip_r_b=flip_r_b,
+                    d_img=d_img, tensor_dtype=tensor_dtype, flip_r_b=flip_r_b,
                 )
 
                 # Create a frame object

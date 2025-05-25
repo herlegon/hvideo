@@ -67,8 +67,8 @@ python -m scripts.img_infer -m A:\ml_models\2x_Pooh_DAT-2_Candidate_1_305k_cc8.9
 
 ## Video inference
 ```
-python .\pytc.py -i A:\tmp\ep01_episode_008_j_lr.mxf -resize_to 640x480 -m A:\ml_models\2x_Pooh_DAT-2_Candidate_1_305k_cc8.9_op20_fp32_bf16_640x480_640x480_640x480_10.11.0.33.engine -bf16
+python .\pytc.py -i A:\tmp\ep01_episode_008_j_lr.mxf -resize_to 640x480 -m A:\ml_models\2x_Pooh_DAT-2_Candidate_1_305k_cc8.9_op20_fp32_bf16_640x480_640x480_640x480_10.11.0.33.engine
 ```
 
 Note:
-- `-resize_to 640x480` is used to resize the video before performing the inference
+- `-resize_to 640x480` is used to resize the video before performing the inference. Not needed when input size is consistent with the model.

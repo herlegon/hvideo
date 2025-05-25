@@ -205,6 +205,9 @@ def main():
         elif arguments.bf16:
             i_dtype = 'bf16'
 
+        if i_dtype not in trt_model.dtypes:
+            i_dtype = 'fp32'
+
         print(f" {step_no}. TRT inference, scale: {trt_model.scale}, dtype: {i_dtype}")
         step_no += 1
 
@@ -296,7 +299,6 @@ def main():
             dtype=i_dtype,
             prescale=pre_resize_shape
         )
-        e_thread.set_producer(i_thread)
         i_thread.set_consumer(e_thread)
 
 
@@ -318,7 +320,8 @@ def main():
 
     if i_thread is not None:
         d_thread.set_consumer(i_thread)
-        i_thread.set_producer(d_thread)
+        # i_thread.set_producer(d_thread)
+        e_thread.set_producer(d_thread)
 
     elif s_thread is not None:
         d_thread.set_consumer(s_thread)

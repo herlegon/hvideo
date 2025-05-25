@@ -104,7 +104,7 @@ class EncoderThread(BaseThread):
                 if verbose:
                     print(
                         purple(f"[V][E] Received no. {received}:"),
-                        f"{d_tensor.shape}, {d_tensor.dtype}, {d_tensor.shape}"
+                        f"{d_tensor.shape}, {d_tensor.dtype}, {d_tensor.data_ptr()}"
                     )
                     received += 1
 
@@ -124,6 +124,8 @@ class EncoderThread(BaseThread):
 
                 else:
                     out_img = d_img.contiguous().numpy()
+
+                frame.tensor = None
 
                 if verbose:
                     print(
