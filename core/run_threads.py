@@ -62,10 +62,10 @@ def run_threads(
                     print("[V][C] All frames encoded, encoder has ended")
                 encoded = e_thread.encoded
                 break
-            time.sleep(0.0001)
+            time.sleep(0.00001)
             continue
 
-        time.sleep(0.0001)
+        time.sleep(0.00001)
         # Detect end of decoding
         if not d_thread.is_alive() and decoding:
             if verbose:
@@ -80,17 +80,18 @@ def run_threads(
                 if verbose:
                     print(f"[V][C] wait for {total_frames} to be encoded")
 
-        time.sleep(0.0001)
+        time.sleep(0.00001)
         if not e_thread.is_alive() and d_thread.is_alive():
             print(red("Error: the encoder encountered an unexpected error"))
             err = True
             break
 
-        time.sleep(0.0001)
+        time.sleep(0.00001)
 
     elapsed = time.time() - start_time
-    progress_thread.put(0, force=True)
-    time.sleep(0.0001)
+    if progress_thread is not None:
+        progress_thread.put(0, force=True)
+    time.sleep(0.00001)
 
     # Stop remaining threads if not already stopped (error cases)
     for thread in i_threads:

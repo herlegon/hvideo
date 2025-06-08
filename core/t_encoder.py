@@ -1,3 +1,5 @@
+import os
+import sys
 import numpy as np
 from pprint import pprint
 from queue import Queue
@@ -149,8 +151,8 @@ class EncoderThread(BaseThread):
                     self.progress_thread.put(sent)
                 self._encoded += sent
 
-                if self.producer is not None:
-                    self.producer.set_produce_flag()
+                # if self.producer is not None:
+                #     self.producer.set_produce_flag()
 
         #     print(red(f"[V][E] Error while executing: "), " ".join(encoder_command))
         self._processing = False

@@ -82,7 +82,7 @@ class EncoderSettings:
     # Encoder
     vcodec: VideoCodec = VideoCodec.H264
     pix_fmt: str | None = 'yuv420p'
-    preset: str | None = 'medium'
+    preset: str | None = ''
     tune: str | None = None
     crf: int | None = None
     overwrite: bool = True
@@ -120,7 +120,7 @@ def args_to_encoder_settings(
         params.preset = args.preset
     if args.tune:
         params.tune = args.tune
-    if args.crf:
+    if args.crf >= 0:
         params.crf = args.crf
 
     vcodec: VideoCodec = params.vcodec
@@ -228,7 +228,7 @@ def generate_ffmpeg_encoder_cmd(
         ffmpeg_exe,
         "-hide_banner",
         "-loglevel", "error",
-        "-stats",
+        "-nostats",
         '-f', 'rawvideo',
         '-pixel_format', video_pipe_info.pix_fmt,
         '-video_size', f"{w}x{h}",

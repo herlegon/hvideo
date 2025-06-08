@@ -40,7 +40,7 @@ from pynnlib import (
 from utils.arg_parse import args_parse, check_args
 from utils.logger import logger, set_logger_settings
 from utils.p_print import *
-from utils.path_utils import absolute_path
+from utils.path_utils import absolute_path, path_split
 from utils.time_conversions import current_datetime_str
 try:
     import winsound
@@ -222,6 +222,12 @@ def main():
     )
     # filepath's extension may have been patched depending on the codec
     out_vi['filepath'] = e_settings.filepath
+    if not arguments.output and arguments.model:
+        directory, basename, extension = path_split(out_vi['filepath'])
+        out_vi['filepath'] = os.path.join(
+            directory,
+            f"{basename}_{trt_model.arch_name.replace(" ", "_")}{extension}"
+        )
     out_fp: str = out_vi['filepath']
     print(lightcyan(f"Output video file:"), f"{out_fp}")
     logger.debug(f"output: {out_fp}")
@@ -235,6 +241,7 @@ def main():
                 'model': os.path.basename(model_filepath)
             }
         })
+
 
     # known issue: wrong info is codec/pixfmt in custom params
     print(
@@ -320,8 +327,8 @@ def main():
 
     if i_thread is not None:
         d_thread.set_consumer(i_thread)
-        # i_thread.set_producer(d_thread)
-        e_thread.set_producer(d_thread)
+        i_thread.set_producer(d_thread)
+        # e_thread.set_producer(d_thread)
 
     elif s_thread is not None:
         d_thread.set_consumer(s_thread)

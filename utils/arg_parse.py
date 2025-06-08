@@ -224,7 +224,7 @@ recommended: yuv420p, yuv422p10le, yuv422p12le
             'slower',
             'veryslow',
         ],
-        default='slow',
+        default='',
         required=False,
         help="""FFmpeg video preset
 \n"""
@@ -234,7 +234,7 @@ recommended: yuv420p, yuv422p10le, yuv422p12le
         "-crf",
         "--crf",
         type=int,
-        default=16,
+        default=-1,
         required=False,
         help="""FFmpeg CRF
 \n"""

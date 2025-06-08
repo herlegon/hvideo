@@ -112,7 +112,7 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
             cuda_stream.synchronize()
 
             e_thread.put_frame(frame)
-            # d_thread.set_produce_flag()
+            d_thread.set_produce_flag()
 
     if verbose:
         print(cyan(f"[V][I][TRT] Ended"))

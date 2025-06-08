@@ -16,7 +16,7 @@ def htod_transfer(
     host_mem.copy_(img_buffer, non_blocking=True)
     d_tensor: Tensor = host_mem.to(device=device)
 
-    time.sleep(0.0001)
+    time.sleep(0.00001)
     cuda_stream.synchronize()
 
     if not d_tensor.is_contiguous():
@@ -32,7 +32,7 @@ def dtoh_transfer(
 ) -> np.ndarray:
     host_mem.copy_(d_img.contiguous(), non_blocking=True)
 
-    time.sleep(0.0001)
+    time.sleep(0.00001)
     cuda_stream.synchronize()
 
     return np.ascontiguousarray(host_mem.numpy())
