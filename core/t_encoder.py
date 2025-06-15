@@ -151,8 +151,9 @@ class EncoderThread(BaseThread):
                     self.progress_thread.put(sent)
                 self._encoded += sent
 
-                # if self.producer is not None:
-                #     self.producer.set_produce_flag()
+                # if disabled, race condition:
+                if self.producer is not None:
+                    self.producer.set_produce_flag()
 
         #     print(red(f"[V][E] Error while executing: "), " ".join(encoder_command))
         self._processing = False

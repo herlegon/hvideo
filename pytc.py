@@ -327,8 +327,13 @@ def main():
 
     if i_thread is not None:
         d_thread.set_consumer(i_thread)
-        i_thread.set_producer(d_thread)
-        # e_thread.set_producer(d_thread)
+
+        # faster but race condition?
+        # i_thread.set_producer(d_thread)
+
+        # otherwise:
+        e_thread.set_producer(d_thread)
+
 
     elif s_thread is not None:
         d_thread.set_consumer(s_thread)

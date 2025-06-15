@@ -1,6 +1,7 @@
 from __future__ import annotations
 import time
 from queue import Queue
+import tensorrt as trt
 import torch
 from typing import TYPE_CHECKING
 from pynnlib import (
@@ -46,8 +47,6 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
     session = self.trt_session
     context, engine = session.context, session.engine
     session_dtype: torch.dtype = session.dtype
-    if session_dtype == torch.bfloat16:
-        session_dtype = torch.float32
     cuda_stream = session.infer_stream
 
     scale = session.model.scale
@@ -85,7 +84,8 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
             in_tensor = frame.tensor
             n, c, in_h, in_w = in_tensor.shape
             in_tensor = in_tensor.to(dtype=session_dtype)
-            in_tensor = torch.ravel(in_tensor)
+            in_tensor = in_tensor.contiguous()
+            # in_tensor = torch.ravel(in_tensor)
             if verbose:
                 print(blue(f"{verbose_prefix} in tensor dtype:{in_tensor.dtype}, {in_tensor.data_ptr()}"))
 
@@ -103,7 +103,11 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
                 print(blue(f"{verbose_prefix} bindings: {bindings}, session dtype: {session_dtype}"))
 
             for i in range(engine.num_io_tensors):
-                context.set_tensor_address(engine.get_tensor_name(i), bindings[i])
+                tensor_name = engine.get_tensor_name(i)
+                context.set_tensor_address(tensor_name, bindings[i])
+                if engine.get_tensor_mode(tensor_name) == trt.TensorIOMode.INPUT:
+                    context.set_input_shape(tensor_name, in_tensor.shape)
+
             context.execute_async_v3(stream_handle=cuda_stream.cuda_stream)
 
             frame.tensor = torch.clamp(out_tensor, 0., 1.)
@@ -112,7 +116,8 @@ def perform_trt_inference(self: InferenceThread, verbose: bool = False):
             cuda_stream.synchronize()
 
             e_thread.put_frame(frame)
-            d_thread.set_produce_flag()
+            # faster but race condition?
+            # d_thread.set_produce_flag()
 
     if verbose:
         print(cyan(f"[V][I][TRT] Ended"))
