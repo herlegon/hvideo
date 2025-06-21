@@ -47,8 +47,7 @@
 
 ## Conversion
 ```
-cd pynnlib
-python -m scripts.convert_model -trt -m A:\ml_models\2x_Pooh_DAT-2_Candidate_1_305k.pth -fixed -opt 640x480 -bf16 -f
+python -m pynnlib.scripts.convert_model -trt -m A:\ml_models\2x_Pooh_DAT-2_Candidate_1_305k.pth -fixed -opt 640x480 -bf16 -f
 ```
 
 Note:
@@ -61,7 +60,7 @@ Note:
 
 ## Test
 ```
-python -m scripts.img_infer -m A:\ml_models\2x_Pooh_DAT-2_Candidate_1_305k_cc8.9_op20_fp32_bf16_640x480_640x480_640x480_10.11.0.33.engine -i A:\imgs\img_640x480.png
+python -m pynnlib.scripts.img_infer -m A:\ml_models\2x_Pooh_DAT-2_Candidate_1_305k_cc8.9_op20_fp32_bf16_640x480_640x480_640x480_10.11.0.33.engine -i A:\imgs\img_640x480.png
 ```
 
 
