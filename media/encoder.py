@@ -11,6 +11,7 @@ import sys
 
 import numpy as np
 
+from utils.logger import logger
 from utils.p_print import lightgreen, red
 from utils.path_utils import get_extension, path_split
 from utils.tools import ffmpeg_exe
@@ -378,6 +379,7 @@ def encoder_subprocess(
     if debug:
         print(lightgreen(f"[V][E] FFmpeg command:"), ' '.join(e_command))
         pprint(e_command)
+    logger.debug(f"[V][E] FFmpeg command: {' '.join(e_command)}")
 
     # Open subprocess
     sub_process: subprocess.Popen

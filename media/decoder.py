@@ -8,6 +8,7 @@ import subprocess
 import sys
 from warnings import warn
 
+from utils.logger import logger
 from utils.time_conversions import (
     FrameRate,
     frame_to_sexagesimal,
@@ -189,6 +190,7 @@ def decoder_subprocess(
 
     if debug:
         print(lightgreen(f"[V][D] FFmpeg command:"), ' '.join(d_command))
+    logger.debug(f"[V][D] FFmpeg command: {' '.join(d_command)}")
 
     # Open subprocess
     sub_process: subprocess.Popen
