@@ -176,3 +176,4 @@ external/ffmpeg/*
 *.bat
 *.mp4
 *.mxf
+*.dll

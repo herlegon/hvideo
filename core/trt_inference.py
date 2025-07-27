@@ -1,7 +1,13 @@
 from __future__ import annotations
 import time
 from queue import Queue
-import tensorrt as trt
+try:
+    import tensorrt as trt
+except:
+    try:
+        import tensorrt_rtx as trt
+    except:
+        pass
 import torch
 from typing import TYPE_CHECKING
 from pynnlib import (
